@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Travel Music Card</title>
+
+<style>
+:root {
+    --spotify: #1DB954;
+    --sky: #00AEEF;
+    --bg: #f7f9fb;
+    --card: #ffffff;
+    --text: #0f172a;
+    --text-soft: #64748b;
+    --border: #e2e8f0;
+}
+
+/* RESET */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+}
+
+/* WRAPPER con borde animado */
+.card-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    border-radius: 20px;
+    padding: 2px;
+    background: linear-gradient(
+        120deg,
+        var(--spotify),
+        var(--sky),
+        transparent,
+        var(--spotify)
+    );
+    background-size: 300% 300%;
+    animation: borderMove 6s linear infinite;
+}
+
+/* Animación snake */
+@keyframes borderMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* CARD */
+.main-card {
+    background: var(--card);
+    border-radius: 18px;
+    padding: 20px;
+}
+
+/* HEADER */
+.header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.category {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--spotify);
+}
+
+.country {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--text);
+}
+
+/* USER */
+.user {
+    text-align: right;
+}
+
+.user img {
+    width: 45px;
+    height: 45px;
+    border-radius: 10px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+}
+
+.username {
+    font-size: 0.7rem;
+    color: var(--text-soft);
+}
+
+/* GRID */
+.grid {
+    display: grid;
+    gap: 12px;
+}
+
+/* CARD ELEMENT */
+.box {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    background: white;
+}
+
+/* CITY */
+.city {
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+/* LABEL */
+.label {
+    font-size: 0.7rem;
+    color: var(--text-soft);
+}
+
+.event {
+    font-weight: 600;
+}
+
+/* SPOTIFY BLOCK */
+.spotify {
+    border: 1px solid var(--spotify);
+    color: var(--spotify);
+    font-size: 0.85rem;
+}
+
+/* FLIGHT */
+.flight {
+    border: 1px solid var(--sky);
+    color: var(--sky);
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+
+/* RESPONSIVE */
+@media (min-width: 600px) {
+    .country { font-size: 2.2rem; }
+    .city { font-size: 1.8rem; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="card-wrapper">
+    <div class="main-card">
+
+        <!-- HEADER -->
+        <div class="header">
+            <div>
+                <div class="category">Budget Nomad</div>
+                <div class="country">Great Britain</div>
+            </div>
+
+            <div class="user">
+                <img src="https://i.scdn.co/image/ab6775700000ee85a80ec04b7be03cd27900edf9">
+                <div class="username">mirsinghh</div>
+            </div>
+        </div>
+
+        <!-- GRID -->
+        <div class="grid">
+
+            <div class="box city">
+                Luton
+            </div>
+
+            <div class="grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="box">
+                    <div class="label">Artist</div>
+                    <div>Diesel</div>
+                </div>
+
+                <div class="box">
+                    <div class="label">Venue</div>
+                    <div class="event">Hat Factory Arts Centre</div>
+                    <div class="label">25 Sep 2026</div>
+                </div>
+            </div>
+
+            <div class="grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="box spotify">
+                    Gritty urban fusion
+                </div>
+
+                <div class="box flight">
+                    skyscanner.com/flight-link
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+</body>
+</html>

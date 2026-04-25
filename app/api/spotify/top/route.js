@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session) {
+    if (!session || session.error === "RefreshAccessTokenError") {
       return Response.json({ error: "No autorizado" }, { status: 401 });
     }
 
@@ -15,6 +15,14 @@ export async function GET() {
     return Response.json({ musicalDNA });
   } catch (error) {
     console.error(error);
+
+    if (error.response?.status === 401) {
+      return Response.json(
+        { error: "Spotify session expired. Please log in again." },
+        { status: 401 }
+      );
+    }
+
     return Response.json({ error: "Error interno" }, { status: 500 });
   }
 }

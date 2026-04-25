@@ -168,7 +168,7 @@ export async function searchTicketmasterEventsForScenes(scenes) {
     };
   }
 
-  const searches = buildTicketmasterSceneSearches(scenes).slice(0, 8);
+  const searches = buildTicketmasterSceneSearches(scenes).slice(0, 6);
   const eventsById = new Map();
   const searchResults = [];
 
@@ -180,9 +180,10 @@ export async function searchTicketmasterEventsForScenes(scenes) {
           keyword: search.keyword,
           countryCode: search.countryCode,
           classificationName: "music",
-          size: 5,
+          size: 3,
           sort: "date,asc"
-        }
+        },
+        timeout: 8000
       });
 
       const events = res.data?._embedded?.events || [];
@@ -248,6 +249,7 @@ function normalizeTicketmasterEvent(event, search) {
     id: event.id,
     name: event.name,
     url: event.url,
+    image: event.images?.[0]?.url || null,
     date: event.dates?.start?.localDate || null,
     time: event.dates?.start?.localTime || null,
     timezone: event.dates?.timezone || null,

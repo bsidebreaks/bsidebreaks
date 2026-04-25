@@ -32,20 +32,12 @@ export default function Home() {
 
   const sessionPending = status === 'loading';
   const redirecting = status === 'authenticated' && !!accessToken;
-  const showCenterAuth =
-    status === 'unauthenticated' || (status === 'authenticated' && hasSessionNoSpotify);
+  const showCenterAuth = status === 'unauthenticated' || (status === 'authenticated' && hasSessionNoSpotify);
   const showWaiting = sessionPending || redirecting;
 
   return (
     <div className="backgroundClass">
-      <Image
-        src="/home/background.jpg"
-        alt=""
-        fill
-        priority
-        className="z-0 object-cover object-center"
-        sizes="100vw"
-      />
+      <Image src="/home/background.jpg" alt="" fill priority className="z-0 object-cover object-center" sizes="100vw" />
       <div
         className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-black/45 via-black/25 to-black/80"
         aria-hidden
@@ -60,9 +52,7 @@ export default function Home() {
           )}
         >
           <div className="space-y-2">
-            <p className="text-balance text-[2rem] font-semibold leading-snug tracking-tight text-white">
-              Ditch the broken record
-            </p>
+            <p className="text-balance text-[2rem] font-semibold leading-snug tracking-tight text-white">Ditch the broken record</p>
             <p className="text-pretty text-[clamp(2.25rem,9vw,5rem)] font-bold leading-snug text-white">
               Find a city break on the B-Side
             </p>
@@ -82,12 +72,8 @@ export default function Home() {
               <div className="flex w-full max-w-[min(100%,20rem)] flex-col items-center gap-6">
                 <div className="flex w-full flex-col items-stretch gap-2">
                   {hasSessionNoSpotify && (
-                    <p
-                      className="text-pretty text-sm text-white/70"
-                      role="status"
-                    >
-                      This session doesn’t have Spotify access. Sign in with Spotify, or sign out to
-                      start over.
+                    <p className="text-pretty text-sm text-white/70" role="status">
+                      This session doesn’t have Spotify access. Sign in with Spotify, or sign out to start over.
                     </p>
                   )}
                   <Button

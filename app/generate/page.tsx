@@ -123,6 +123,7 @@ export default function GeneratePage() {
       });
 
       const recsData = (await recsRes.json()) as RecommendationResponse;
+      console.log('Recommendations API response', recsData);
 
       if (!recsRes.ok) {
         throw new Error(mapApiError(recsData.error));
