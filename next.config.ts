@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  allowedDevOrigins: [
+    "decal-luckily-commend.ngrok-free.dev",
+    "torv.io"
+  ]
 };
 
 export default nextConfig;
