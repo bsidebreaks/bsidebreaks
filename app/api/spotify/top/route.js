@@ -12,7 +12,7 @@ export async function GET() {
 
     const musicalDNA = await getMusicalDNA(session.accessToken);
 
-    return Response.json(musicalDNA);
+    return Response.json({ musicalDNA });
   } catch (error) {
     console.error(error);
     return Response.json({ error: "Error interno" }, { status: 500 });

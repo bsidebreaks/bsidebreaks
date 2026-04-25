@@ -3,11 +3,22 @@
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useState } from "react";
 
+type JsonObject = Record<string, unknown>;
+
+type SpotifyTopResponse = {
+  musicalDNA: JsonObject;
+};
+
+type ApiResponse = JsonObject & {
+  error?: string;
+};
+
 export default function Home() {
   const { data: session } = useSession();
 
-  const [dna, setDna] = useState<any>(null);
-  const [result, setResult] = useState<any>(null);
+  const [dna, setDna] = useState<JsonObject | null>(null);
+  const [ticketmaster, setTicketmaster] = useState<JsonObject | null>(null);
+  const [result, setResult] = useState<JsonObject | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,9 +28,10 @@ export default function Home() {
 
     try {
       const res = await fetch("/api/spotify/top");
-      const data = await res.json();
-      setDna(data);
-    } catch (err) {
+      const data = (await res.json()) as SpotifyTopResponse;
+      setDna(data.musicalDNA);
+      setTicketmaster(null);
+    } catch {
       setError("Error loading Spotify data");
     }
   };
@@ -41,10 +53,12 @@ export default function Home() {
         })
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as ApiResponse;
 
       // 🔥 Manejo de errores backend
       if (!res.ok) {
+        setResult(data);
+
         // error IA saturada
         if (data?.error?.includes("high demand") || data?.error?.includes("UNAVAILABLE")) {
           setError("AI is overloaded right now. Try again in a few seconds.");
@@ -55,12 +69,16 @@ export default function Home() {
         setResult(data);
       }
 
-    } catch (err) {
+    } catch {
       setError("Network error. Check connection.");
     }
 
     setLoading(false);
   };
+
+  const aiTasteProfile = result?.tasteProfile as JsonObject | undefined;
+  const aiTicketmasterEvents = result?.ticketmasterEventSearch as JsonObject | undefined;
+  const aiRecommendations = result?.recommendations as unknown[] | undefined;
 
   return (
     <main className="min-h-screen p-8">
@@ -122,7 +140,7 @@ export default function Home() {
           {dna && (
             <div className="mb-8">
               <h2 className="text-xl font-semibold mb-2">
-                Musical DNA (RAW)
+                Spotify Musical DNA (RAW)
               </h2>
               <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
                 {JSON.stringify(dna, null, 2)}
@@ -130,11 +148,56 @@ export default function Home() {
             </div>
           )}
 
+          {/* TICKETMASTER RAW RESPONSE */}
+          {ticketmaster && (
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-2">
+                Ticketmaster Attractions (RAW)
+              </h2>
+              <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
+                {JSON.stringify(ticketmaster, null, 2)}
+              </pre>
+            </div>
+          )}
+
           {/* 🤖 RAW AI RESPONSE */}
+          {aiTasteProfile && (
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-2">
+                AI Taste Profile (RAW)
+              </h2>
+              <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
+                {JSON.stringify(aiTasteProfile, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {aiTicketmasterEvents && (
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-2">
+                Ticketmaster Event Search (RAW)
+              </h2>
+              <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
+                {JSON.stringify(aiTicketmasterEvents, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {aiRecommendations && (
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-2">
+                Final Travel Recommendations (RAW)
+              </h2>
+              <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
+                {JSON.stringify(aiRecommendations, null, 2)}
+              </pre>
+            </div>
+          )}
+
           {result && (
             <div>
               <h2 className="text-xl font-semibold mb-2">
-                AI Response (RAW)
+                Full Generate Trips Response (RAW)
               </h2>
               <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
                 {JSON.stringify(result, null, 2)}

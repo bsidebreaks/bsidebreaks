@@ -43,7 +43,7 @@ export async function POST(req) {
     let parsed;
     try {
       parsed = JSON.parse(data.choices[0].message.content);
-    } catch (e) {
+    } catch {
       console.error("Error parsing AI response", data);
       return Response.json({ error: "AI parsing error" }, { status: 500 });
     }
