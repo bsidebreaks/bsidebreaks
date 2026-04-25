@@ -29,3 +29,13 @@ export async function getTopTracks(accessToken) {
 
   return res.data.items;
 }
+
+export async function getUserProfile(accessToken) {
+  const res = await axios.get(`https://api.spotify.com/v1/me`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  return res.data;
+}
