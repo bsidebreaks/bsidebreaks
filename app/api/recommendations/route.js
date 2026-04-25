@@ -9,6 +9,7 @@ const ai = new GoogleGenAI({
 
 const MODEL = process.env.GEMINI_MODEL || "gemma-4-31b-it";
 const CATEGORIES = ["Budget Nomad", "Maverick", "Pure Experience"];
+const UNSPLASH_SEARCH = "https://api.unsplash.com/search/photos";
 
 export async function POST(req) {
   try {
@@ -52,7 +53,9 @@ export async function POST(req) {
       events = fallbackEventSearch.events;
     }
 
-    const recommendations = buildMainRecommendations(musicalDNA, tasteProfile, events);
+    const recommendations = await withLocationPhotos(
+      buildMainRecommendations(musicalDNA, tasteProfile, events)
+    );
 
     const response = {
       user: {
@@ -139,6 +142,37 @@ function normalizeList(value) {
   }
 
   return value ? [value] : [];
+}
+
+/** Unsplash Search Photos: https://api.unsplash.com/search/photos — needs UNSPLASH_ACCESS_KEY. */
+async function withLocationPhotos(recommendations) {
+  const key = process.env.UNSPLASH_ACCESS_KEY;
+  if (!key || !recommendations.length) {
+    return recommendations.map((r) => ({ ...r, location_photo: null }));
+  }
+
+  return Promise.all(
+    recommendations.map(async (rec) => ({
+      ...rec,
+      location_photo: await fetchUnsplashLocationPhoto(key, rec.city, rec.country)
+    }))
+  );
+}
+
+async function fetchUnsplashLocationPhoto(accessKey, city, country) {
+  if (!city) return null;
+  const params = new URLSearchParams({
+    query: [city, country].filter(Boolean).join(" "),
+    per_page: "1",
+    orientation: "landscape"
+  });
+  const res = await fetch(`${UNSPLASH_SEARCH}?${params}`, {
+    headers: { Authorization: `Client-ID ${accessKey}` }
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const photo = data.results?.[0];
+  return photo?.urls?.regular || photo?.urls?.small || null;
 }
 
 function buildFallbackTasteProfile(dna, tasteProfile) {

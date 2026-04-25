@@ -21,35 +21,11 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  type CarouselApi,
-} from '@/components/ui/carousel';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from '@/components/ui/carousel';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
 
 type MusicalDNA = {
   topArtists?: Array<{ name?: string } | string>;
@@ -68,6 +44,8 @@ type Recommendation = {
   reasoning?: string;
   event_url?: string;
   flightURL?: string | null;
+  location_photo?: string | null;
+  image?: string | null;
 };
 
 type RecommendationResponse = {
@@ -84,10 +62,25 @@ function mapApiError(message?: string) {
 }
 
 function googleMapsSearchUrl(query: string) {
-  return `https://www.google.com/maps/search/${encodeURIComponent(query.trim()).replace(
-    /%20/g,
-    '+',
-  )}`;
+  return `https://www.google.com/maps/search/${encodeURIComponent(query.trim()).replace(/%20/g, '+')}`;
+}
+
+function heroImageUrl(t: Recommendation) {
+  return (t.location_photo || t.image || "").trim() || null;
+}
+
+/** Resolves when the browser has fetched the image (avoids `background-image` painting black until decode). */
+function preloadImage(url: string) {
+  return new Promise<void>((resolve) => {
+    if (typeof window === "undefined") {
+      resolve();
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = () => resolve();
+    img.src = url;
+  });
 }
 
 export default function GeneratePage() {
@@ -123,18 +116,20 @@ export default function GeneratePage() {
       });
 
       const recsData = (await recsRes.json()) as RecommendationResponse;
-      console.log('Recommendations API response', recsData);
 
       if (!recsRes.ok) {
         throw new Error(mapApiError(recsData.error));
       }
 
-      setRecommendations((recsData.recommendations || []).slice(0, 3));
+      const recs = (recsData.recommendations || []).slice(0, 3);
+      const heroUrls = [...new Set(recs.map(heroImageUrl).filter((u): u is string => Boolean(u)))];
+      if (heroUrls.length) {
+        await Promise.all(heroUrls.map(preloadImage));
+      }
+      setRecommendations(recs);
     } catch (requestError) {
       const message =
-        requestError instanceof Error
-          ? mapApiError(requestError.message)
-          : 'Could not generate trips right now. Please retry.';
+        requestError instanceof Error ? mapApiError(requestError.message) : 'Could not generate trips right now. Please retry.';
       setError(message);
     } finally {
       setLoading(false);
@@ -165,23 +160,42 @@ export default function GeneratePage() {
     };
   }, [api]);
 
-  const spotifyExpired = error
-    ?.toLowerCase()
-    .includes('spotify session expired');
+  const spotifyExpired = error?.toLowerCase().includes('spotify session expired');
+
+  const showTrips = !loading && !error && recommendations.length > 0;
+  const trip = showTrips ? recommendations[Math.min(current, recommendations.length - 1)] : undefined;
+  const heroUrl = trip ? heroImageUrl(trip) : null;
 
   return (
-    <main className="flex min-h-screen flex-col items-center px-4 py-10 sm:py-14">
-      <div className="flex w-full max-w-md flex-col items-center gap-8">
+    <main
+      className={`relative flex min-h-svh w-full flex-col items-center overflow-x-hidden px-4 py-10 sm:py-14${
+        showTrips && !heroUrl ? ' bg-zinc-950' : ''
+      }`}
+    >
+      {showTrips && heroUrl && (
+        <>
+          <div
+            className="pointer-events-none fixed inset-0 z-0 bg-zinc-950 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url(${heroUrl})` }}
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none fixed inset-0 z-[1] bg-gradient-to-b from-black/65 via-black/35 to-black/88"
+            aria-hidden
+          />
+        </>
+      )}
+
+      <div className="relative z-10 flex w-full max-w-md flex-col items-center gap-8">
         <header className="flex w-full items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Your trips</h1>
-            <p className="text-sm text-muted-foreground">
-              Picked from your Spotify taste
-            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-white">Your trips</h1>
+            <p className="text-sm text-muted-foreground text-olive-200">Picked from your Spotify taste</p>
           </div>
           <Button
             variant="ghost"
             size="icon"
+            className="text-white hover:text-white/80"
             aria-label="Logout"
             onClick={() => signOut({ callbackUrl: '/' })}
           >
@@ -189,29 +203,33 @@ export default function GeneratePage() {
           </Button>
         </header>
 
-        {(status === 'loading' || loading) && (
+        {status === 'loading' && (
           <Card className="w-full">
             <CardContent className="flex flex-col items-center justify-center gap-4 py-16">
               <Loader2 className="size-10 animate-app-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                Generating your 3 trips...
-              </p>
+              <p className="text-sm text-muted-foreground">Loading session…</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {status === 'authenticated' && loading && (
+          <Card className="w-full">
+            <CardContent className="flex flex-col items-center justify-center gap-4 py-16">
+              <Loader2 className="size-10 animate-app-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Generating your 3 trips…</p>
             </CardContent>
           </Card>
         )}
 
         {!loading && error && (
-          <Card className="w-full">
+          <Card className="w-full border-zinc-800/90 bg-zinc-950 text-zinc-50 shadow-lg">
             <CardHeader>
-              <CardTitle>Could not generate trips</CardTitle>
-              <CardDescription>{error}</CardDescription>
+              <CardTitle className="font-semibold text-white">Could not generate trips</CardTitle>
+              <CardDescription className="text-zinc-400">{error}</CardDescription>
             </CardHeader>
-            <CardFooter>
+            <CardFooter className="border-t border-zinc-800/80 bg-zinc-900/40">
               {spotifyExpired ? (
-                <Button
-                  className="w-full"
-                  onClick={() => signOut({ callbackUrl: '/' })}
-                >
+                <Button className="w-full" onClick={() => signOut({ callbackUrl: '/' })}>
                   <LogIn className="size-4" />
                   Reconnect Spotify
                 </Button>
@@ -226,15 +244,14 @@ export default function GeneratePage() {
         )}
 
         {!loading && !error && recommendations.length === 0 && (
-          <Card className="w-full">
+          <Card className="w-full border-zinc-800/90 bg-zinc-950 text-zinc-50 shadow-lg">
             <CardHeader>
-              <CardTitle>No trips found</CardTitle>
-              <CardDescription>
-                We couldn&apos;t match any live events to your taste right now.
-                Try again in a moment.
+              <CardTitle className="font-semibold text-white">No trips found</CardTitle>
+              <CardDescription className="text-zinc-400">
+                We couldn&apos;t match any live events to your taste right now. Try again in a moment.
               </CardDescription>
             </CardHeader>
-            <CardFooter>
+            <CardFooter className="border-t border-zinc-800/80 bg-zinc-900/40">
               <Button className="w-full" onClick={() => void generateTrips()}>
                 <RotateCcw className="size-4" />
                 Try again
@@ -245,19 +262,11 @@ export default function GeneratePage() {
 
         {!loading && !error && recommendations.length > 0 && (
           <div className="flex w-full flex-col items-center gap-6">
-            <Carousel
-              setApi={setApi}
-              opts={{ align: 'start', loop: false }}
-              className="w-full"
-            >
+            <Carousel setApi={setApi} opts={{ align: 'start', loop: false }} className="w-full">
               <CarouselContent>
                 {recommendations.map((trip, index) => (
-                  <CarouselItem key={`${trip.event_name || 'trip'}-${index}`}>
-                    <TripCard
-                      trip={trip}
-                      index={index}
-                      total={recommendations.length}
-                    />
+                  <CarouselItem key={`${trip.event_url ?? trip.event_name ?? 'trip'}-${index}`}>
+                    <TripCard trip={trip} index={index} total={recommendations.length} />
                   </CarouselItem>
                 ))}
               </CarouselContent>
@@ -270,21 +279,12 @@ export default function GeneratePage() {
                   type="button"
                   aria-label={`Go to slide ${index + 1}`}
                   onClick={() => api?.scrollTo(index)}
-                  className={`h-2 rounded-full transition-all ${
-                    current === index
-                      ? 'w-6 bg-primary'
-                      : 'w-2 bg-muted-foreground/30'
-                  }`}
+                  className={`h-2 rounded-full transition-all ${current === index ? 'w-6 bg-primary' : 'w-2 bg-white/50 hover:bg-white/70'}`}
                 />
               ))}
             </div>
 
-            <Button
-              variant="outline"
-              size="lg"
-              className="rounded-full"
-              onClick={() => void generateTrips()}
-            >
+            <Button variant="outline" size="lg" className="rounded-full" onClick={() => void generateTrips()}>
               <RotateCcw className="size-4" />
               Generate again
             </Button>
@@ -295,32 +295,32 @@ export default function GeneratePage() {
   );
 }
 
-function TripCard({
-  trip,
-  index,
-  total,
-}: {
-  trip: Recommendation;
-  index: number;
-  total: number;
-}) {
+function TripCard({ trip, index, total }: { trip: Recommendation; index: number; total: number }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
-  const destination =
-    trip.destination ||
-    [trip.city, trip.country].filter(Boolean).join(', ') ||
-    'Unknown destination';
+  const destination = trip.destination || [trip.city, trip.country].filter(Boolean).join(', ') || 'Unknown destination';
   const eventName = trip.event_name || 'Live event recommendation';
+  const coverUrl = heroImageUrl(trip);
 
   return (
     <>
-      <Card className="w-full">
-        <CardHeader className="space-y-3">
+      <Card className="w-full gap-0 overflow-hidden p-0">
+        {coverUrl ? (
+          <img
+            src={coverUrl}
+            alt=""
+            className="aspect-[16/10] w-full shrink-0 object-cover"
+            loading="eager"
+            decoding="async"
+          />
+        ) : (
+          <div className="aspect-[16/10] w-full shrink-0 bg-muted" aria-hidden />
+        )}
+
+        <CardHeader className={cn('space-y-3 px-6', coverUrl ? 'pt-5' : 'pt-6')}>
           <div className="flex items-center justify-between">
-            <Badge variant="secondary">
-              {trip.category || 'Music Discovery'}
-            </Badge>
+            <Badge variant="secondary">{trip.category || 'Music Discovery'}</Badge>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">
                 {index + 1} / {total}
@@ -355,41 +355,23 @@ function TripCard({
           className="block w-full cursor-pointer text-left transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="View full trip details"
         >
-          <CardContent className="space-y-4 text-sm">
-            <p className="leading-relaxed text-muted-foreground">
-              {trip.reasoning ||
-                'Picked from your closest music scene match.'}
-            </p>
+          <CardContent className="space-y-4 px-6 text-sm">
+            <p className="leading-relaxed text-muted-foreground">{trip.reasoning || 'Picked from your closest music scene match.'}</p>
             <div className="space-y-2.5 border-t pt-4">
-              <InfoRow
-                icon={<Calendar className="size-4" />}
-                label={trip.event_date || 'Date TBD'}
-              />
+              <InfoRow icon={<Calendar className="size-4" />} label={trip.event_date || 'Date TBD'} />
               <InfoRow
                 icon={<MapPin className="size-4" />}
                 label={trip.venue || 'Venue TBD'}
-                href={
-                  trip.venue ? googleMapsSearchUrl(trip.venue) : undefined
-                }
+                href={trip.venue ? googleMapsSearchUrl(trip.venue) : undefined}
               />
-              <InfoRow
-                icon={<Music className="size-4" />}
-                label={trip.discovery_artist || 'Artist TBD'}
-              />
-              {trip.spotify_playlist_vibe && (
-                <InfoRow
-                  icon={<Sparkles className="size-4" />}
-                  label={trip.spotify_playlist_vibe}
-                />
-              )}
+              <InfoRow icon={<Music className="size-4" />} label={trip.discovery_artist || 'Artist TBD'} />
+              {trip.spotify_playlist_vibe && <InfoRow icon={<Sparkles className="size-4" />} label={trip.spotify_playlist_vibe} />}
             </div>
-            <p className="text-xs font-medium text-primary/70">
-              Tap for full details
-            </p>
+            <p className="text-xs font-medium text-primary/70">Tap for full details</p>
           </CardContent>
         </div>
 
-        <CardFooter className="flex-col gap-2">
+        <CardFooter className="flex-col gap-2 px-6 pb-6">
           {trip.event_url && (
             <Button asChild className="w-full">
               <a href={trip.event_url} target="_blank" rel="noreferrer">
@@ -417,13 +399,7 @@ function TripCard({
         onOpenChange={setDetailsOpen}
       />
 
-      <ShareSheet
-        trip={trip}
-        destination={destination}
-        eventName={eventName}
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-      />
+      <ShareSheet trip={trip} destination={destination} eventName={eventName} open={shareOpen} onOpenChange={setShareOpen} />
     </>
   );
 }
@@ -449,39 +425,21 @@ function TripDetailsDialog({
             {trip.category || 'Music Discovery'}
           </Badge>
           <DialogTitle className="pt-2 text-2xl">{destination}</DialogTitle>
-          <DialogDescription className="text-base">
-            {eventName}
-          </DialogDescription>
+          <DialogDescription className="text-base">{eventName}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 text-sm">
-          <p className="leading-relaxed text-muted-foreground">
-            {trip.reasoning ||
-              'Picked from your closest music scene match.'}
-          </p>
+          <p className="leading-relaxed text-muted-foreground">{trip.reasoning || 'Picked from your closest music scene match.'}</p>
 
           <div className="space-y-2.5 border-t pt-4">
-            <InfoRow
-              icon={<Calendar className="size-4" />}
-              label={trip.event_date || 'Date TBD'}
-            />
+            <InfoRow icon={<Calendar className="size-4" />} label={trip.event_date || 'Date TBD'} />
             <InfoRow
               icon={<MapPin className="size-4" />}
               label={trip.venue || 'Venue TBD'}
-              href={
-                trip.venue ? googleMapsSearchUrl(trip.venue) : undefined
-              }
+              href={trip.venue ? googleMapsSearchUrl(trip.venue) : undefined}
             />
-            <InfoRow
-              icon={<Music className="size-4" />}
-              label={trip.discovery_artist || 'Artist TBD'}
-            />
-            {trip.spotify_playlist_vibe && (
-              <InfoRow
-                icon={<Sparkles className="size-4" />}
-                label={trip.spotify_playlist_vibe}
-              />
-            )}
+            <InfoRow icon={<Music className="size-4" />} label={trip.discovery_artist || 'Artist TBD'} />
+            {trip.spotify_playlist_vibe && <InfoRow icon={<Sparkles className="size-4" />} label={trip.spotify_playlist_vibe} />}
           </div>
         </div>
 
@@ -554,9 +512,7 @@ function ShareSheet({
     }
   };
 
-  const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-    shareBody
-  )}`;
+  const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareBody)}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareBody)}`;
 
   return (
@@ -571,19 +527,11 @@ function ShareSheet({
           </SheetHeader>
 
           <div className="mt-5 grid gap-2">
-            <Button
-              variant="outline"
-              className="h-11 w-full justify-start gap-2"
-              onClick={handleNativeShare}
-            >
+            <Button variant="outline" className="h-11 w-full justify-start gap-2" onClick={handleNativeShare}>
               <Share2 className="size-4 shrink-0" />
               Share via device
             </Button>
-            <Button
-              variant="outline"
-              className="h-11 w-full justify-start gap-2"
-              onClick={handleCopy}
-            >
+            <Button variant="outline" className="h-11 w-full justify-start gap-2" onClick={handleCopy}>
               {copied ? (
                 <>
                   <Check className="size-4 shrink-0" />
@@ -596,21 +544,13 @@ function ShareSheet({
                 </>
               )}
             </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="h-11 w-full justify-start gap-2"
-            >
+            <Button asChild variant="outline" className="h-11 w-full justify-start gap-2">
               <a href={twitterUrl} target="_blank" rel="noreferrer">
                 <XIcon className="size-4 shrink-0" />
                 Share on X
               </a>
             </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="h-11 w-full justify-start gap-2"
-            >
+            <Button asChild variant="outline" className="h-11 w-full justify-start gap-2">
               <a href={whatsappUrl} target="_blank" rel="noreferrer">
                 <MessageCircle className="size-4 shrink-0" />
                 Share on WhatsApp
@@ -625,26 +565,13 @@ function ShareSheet({
 
 function XIcon({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
       <path d="M18.244 2H21l-6.52 7.45L22 22h-6.79l-4.78-6.243L4.8 22H2l7-7.99L2 2h6.94l4.32 5.71L18.244 2zm-2.38 18h1.84L7.27 4H5.32l10.54 16z" />
     </svg>
   );
 }
 
-function InfoRow({
-  icon,
-  label,
-  href,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  href?: string;
-}) {
+function InfoRow({ icon, label, href }: { icon: React.ReactNode; label: string; href?: string }) {
   const text = href ? (
     <a
       href={href}
