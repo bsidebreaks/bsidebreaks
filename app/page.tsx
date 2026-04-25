@@ -10,6 +10,8 @@ import { tripPrimaryCta } from "@/lib/trip-recommendation";
 import { cn } from "@/lib/utils";
 import { RefreshCw } from "lucide-react";
 import { signOut } from "next-auth/react";
+import Image from "next/image";
+import background from "../public/home/background.jpg";
 
 export default function Home() {
   const {
@@ -35,11 +37,12 @@ export default function Home() {
   const centerAuthBlock = !hasTripCards;
 
   return (
-    <div
+    <div className="backgroundClass">
+        <div
       className={cn(
-        "mx-auto flex min-h-svh w-full max-w-sm flex-col px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]",
+        "mx-auto flex min-h-svh w-full max-w-sm flex-col px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] z-40",
         hasTripCards ? "gap-6" : "gap-0"
-      )}
+      ) } 
     >
       {centerAuthBlock ? (
         <div className="flex flex-1 flex-col items-center justify-center text-center">
@@ -202,6 +205,7 @@ export default function Home() {
           Sign out
         </button>
       )}
+    </div>
     </div>
   );
 }
