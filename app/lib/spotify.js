@@ -114,7 +114,11 @@ export async function getTicketmasterAttractionsForArtists(artists) {
           params: {
             apikey: apiKey,
             keyword: artistName,
-            size: 5
+            size: 5,
+            startDateTime: new Date().toISOString(),
+            availability: "available",
+            includeTBA: "no",
+            includeTBD: "no",
           }
         });
 
