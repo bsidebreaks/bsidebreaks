@@ -26,30 +26,51 @@ export async function POST() {
       throw e;
     }
 
+    if (!musicalDNA || !musicalDNA.topArtists?.length) {
+      return Response.json({ error: "Invalid musical DNA" }, { status: 400 });
+    }
+
     const prompt = buildPrompt(musicalDNA);
 
-    const aiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.8,
-            // Avoid truncated JSON (parse errors mid-string) for 3 items × long fields
-            maxOutputTokens: 8192,
-            responseMimeType: "application/json",
+    // ⏱️ Timeout para evitar esperas largas
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    let aiResponse;
+
+    try {
+      aiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
           },
-        }),
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ text: prompt }]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.8,
+              maxOutputTokens: 600
+            }
+          })
+        }
+      );
+    } catch (err) {
+      if (err.name === "AbortError") {
+        return Response.json(
+          { error: "AI timeout, try again" },
+          { status: 408 }
+        );
       }
-    );
+      throw err;
+    }
+
+    clearTimeout(timeout);
 
     const raw = await aiResponse.text();
     let data;
@@ -74,6 +95,7 @@ export async function POST() {
       return Response.json({ error: "AI returned empty response" }, { status: 500 });
     }
 
+    // limpiar markdown tipo ```json
     const cleanText = text.replace(/```json|```/g, "").trim();
     if (!cleanText) {
       return Response.json({ error: "AI returned empty JSON" }, { status: 500 });
@@ -87,27 +109,41 @@ export async function POST() {
       return Response.json({ error: "AI parsing error" }, { status: 500 });
     }
 
-    const defaultImage =
-      "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80";
-    if (Array.isArray(parsed.recommendations)) {
-      for (const r of parsed.recommendations) {
-        if (
-          !r.image_url ||
-          typeof r.image_url !== "string" ||
-          !r.image_url.startsWith("https://")
-        ) {
-          r.image_url = defaultImage;
-        }
-      }
+    if (!parsed?.recommendations || !Array.isArray(parsed.recommendations)) {
+      return Response.json({ error: "Invalid AI format" }, { status: 500 });
     }
+
+    // ✈️ Generar URLs de vuelos
+    const originIata = "bcn"; // 🔥 luego lo hacemos dinámico
+
+    parsed.recommendations = parsed.recommendations.map(rec => {
+      const destinationIata = (rec.iata || "").toLowerCase();
+
+      return {
+        ...rec,
+        flightURL: destinationIata
+          ? buildFlightURL(originIata, destinationIata)
+          : null
+      };
+    });
+
+    return Response.json(parsed);
 
     return Response.json(parsed);
   } catch (error) {
-    console.error(error);
+    console.error("API ERROR:", error);
     return Response.json({ error: "Error interno" }, { status: 500 });
   }
 }
 
+
+// ✈️ Generador de URL Skyscanner
+function buildFlightURL(originIata, destinationIata) {
+  return `https://www.skyscanner.es/transporte/vuelos/${originIata}/${destinationIata}/260425/260513/`;
+}
+
+
+// 🧠 Prompt
 function buildPrompt(dna) {
   const artists = Array.isArray(dna?.topArtists) ? dna.topArtists : [];
   const tracks = Array.isArray(dna?.topTracks) ? dna.topTracks : [];
@@ -122,6 +158,7 @@ User musical profile:
 
 IMPORTANT:
 Return ONLY valid JSON.
+NO explanations, NO text outside JSON.
 
 FORMAT:
 
@@ -129,6 +166,9 @@ FORMAT:
   "recommendations": [
     {
       "destination": "City, Country",
+      "city": "City name only",
+      "country": "Country name",
+      "iata": "IATA airport code (e.g. CDG, DXB, YYZ)",
       "event_name": "Event or scene",
       "category": "Budget Nomad | Maverick | Pure Experience",
       "cost_index": 1-5,
@@ -141,8 +181,9 @@ FORMAT:
 
 RULES:
 - Exactly 3 recommendations
-- Different countries
-- image_url: required. A direct https URL to a landscape photo of that destination, suitable for a card hero. Prefer real, stable URLs you know (e.g. images.unsplash.com/photo-… with auto=format&fit=crop&w=1200&q=80). It must be https and publicly loadable in a browser.
-- Keep each string value concise (a few words to one short sentence) so the JSON is complete
+- Each in a different country
+- "iata" MUST be valid and major airport
+- Prefer international airports
+- Keep reasoning VERY short (max 10 words)
 `;
 }

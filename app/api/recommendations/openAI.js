@@ -14,28 +14,28 @@ export async function POST(req) {
 
     const prompt = buildPrompt(musicalDNA);
 
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-        {
-            role: "system",
-            content: "You are an API. You ONLY return valid JSON. No explanations, no text."
-        },
-        {
-            role: "user",
-            content: prompt
-        }
-        ],
-        temperature: 0.7,
-        response_format: { type: "json_object" } // 🔥 CLAVE
-    })
-    });
+    if (!musicalDNA || !musicalDNA.topArtists?.length) {
+      return Response.json({ error: "Invalid musical DNA" }, { status: 400 });
+    }
+
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 8000);
+
+    const aiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 800
+          }
+        })
+      }
+    );
 
     const data = await aiResponse.json();
 

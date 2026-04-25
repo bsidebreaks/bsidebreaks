@@ -30,31 +30,12 @@ export async function getTopTracks(accessToken) {
   return res.data.items;
 }
 
-export function buildMusicalDNA(artists, tracks) {
-  const genres = new Set();
-  const artistNames = [];
-  const trackNames = [];
-  (artists || []).forEach((artist) => {
-    if (artist?.genres && Array.isArray(artist.genres)) {
-      artist.genres.forEach((g) => genres.add(g));
+export async function getUserProfile(accessToken) {
+  const res = await axios.get(`https://api.spotify.com/v1/me`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
     }
-    if (artist?.name) artistNames.push(artist.name);
   });
-  (tracks || []).forEach((track) => {
-    if (track?.name) trackNames.push(track.name);
-  });
-  return {
-    topGenres: Array.from(genres).slice(0, 5),
-    topArtists: artistNames.slice(0, 5),
-    topTracks: trackNames.slice(0, 5),
-    mood: "auto-detected",
-  };
-}
 
-export async function getMusicalDNA(accessToken) {
-  const [artists, tracks] = await Promise.all([
-    getTopArtists(accessToken),
-    getTopTracks(accessToken),
-  ]);
-  return buildMusicalDNA(artists, tracks);
+  return res.data;
 }
