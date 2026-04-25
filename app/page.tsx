@@ -26,7 +26,7 @@ export default function Home() {
 
   useEffect(() => {
     if (status === 'authenticated' && accessToken) {
-      router.replace('/generate');
+      router.replace('/config');
     }
   }, [status, accessToken, router]);
 
@@ -37,7 +37,6 @@ export default function Home() {
 
   return (
     <div className="backgroundClass">
-      <Image src="/home/background.jpg" alt="" fill priority className="z-0 object-cover object-center" sizes="100vw" />
       <div
         className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-black/45 via-black/25 to-black/80"
         aria-hidden
@@ -81,7 +80,7 @@ export default function Home() {
                     onClick={() => {
                       setAuthError(null);
                       setConnecting(true);
-                      void signIn('spotify', { callbackUrl: '/generate' })
+                      void signIn('spotify', { callbackUrl: '/config' })
                         .then((res) => {
                           if (res?.error) {
                             setAuthError('Could not start Spotify sign-in. Try again.');
