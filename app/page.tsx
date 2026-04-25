@@ -10,8 +10,14 @@ import { tripPrimaryCta } from "@/lib/trip-recommendation";
 import { cn } from "@/lib/utils";
 import { RefreshCw } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { Poppins } from "next/font/google";
 import Image from "next/image";
 import background from "../public/home/background.jpg";
+
+const poppins = Poppins({
+	subsets: ['latin'],
+	weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+})
 
 export default function Home() {
   const {
@@ -38,26 +44,25 @@ export default function Home() {
 
   return (
     <div className="backgroundClass">
+    <div className={poppins.className}>
         <div
       className={cn(
-        "mx-auto flex min-h-svh w-full max-w-sm flex-col px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] z-40",
+        "flex min-h-svh w-full max-w flex-col px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] z-40",
         hasTripCards ? "gap-6" : "gap-0"
       ) } 
     >
+      <div className="space-y-2">
+              <p className="text-balance text-[2rem] font-semibold leading-snug tracking-tight text-white">
+	      	Ditch the broken record
+              </p>
+              <p className="text-pretty text-[5rem] font-bold leading-snug text-white">
+	      	Find a city break on the B-Side
+              </p>
+      </div>
+
       {centerAuthBlock ? (
         <div className="flex flex-1 flex-col items-center justify-center text-center">
           <div className="flex w-full max-w-[min(100%,20rem)] flex-col items-center gap-6">
-            <div className="space-y-2">
-              <h1 className="text-balance text-[1.5rem] font-semibold leading-snug tracking-tight">
-                Trips for your mixtape
-              </h1>
-              <p className="text-pretty text-[15px] leading-relaxed text-muted-foreground">
-                {spotifyReady
-                  ? "Building trip ideas from your recent listens…"
-                  : "Connect Spotify — we turn your taste into three trip ideas."}
-              </p>
-            </div>
-
             {!spotifyReady ? (
               <div className="flex w-full flex-col items-stretch gap-2">
                 {hasSessionNoSpotify && (
@@ -205,6 +210,7 @@ export default function Home() {
           Sign out
         </button>
       )}
+    </div>
     </div>
     </div>
   );
