@@ -97,7 +97,7 @@ export default function Home() {
                     className={cn(
                       'h-12 w-full rounded-2xl text-[15px] font-semibold',
                       'gap-2.5 border-0 bg-[#1DB954] text-white shadow-md',
-                      'shadow-emerald-950/15 hover:bg-[#1ed760] disabled:opacity-60',
+                      'shadow-emerald-950/15 hover:bg-[#1ed760] disabled:opacity-85',
                     )}
                   >
                     {connecting || sessionPending ? (
