@@ -3,6 +3,7 @@ import { authOptions } from "../../../lib/auth";
 import { getMusicalDNA } from "../../../lib/spotify";
 
 export async function GET() {
+    var msg = "session"
   try {
     const session = await getServerSession(authOptions);
 
@@ -11,6 +12,7 @@ export async function GET() {
     }
 
     const musicalDNA = await getMusicalDNA(session.accessToken);
+      msg = "musicalDNA"
 
     return Response.json({ musicalDNA });
   } catch (error) {
@@ -23,6 +25,6 @@ export async function GET() {
       );
     }
 
-    return Response.json({ error: "Error interno" }, { status: 500 });
+    return Response.json({ error: msg + " failed" }, { status: 500 });
   }
 }

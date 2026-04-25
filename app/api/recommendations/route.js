@@ -1,6 +1,5 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../lib/auth";
-import { searchTicketmasterEventsForScenes } from "../../lib/spotify";
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({
@@ -19,7 +18,7 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const { musicalDNA } = body;
+    const { musicalDNA, from, to } = body;
 
     if (!musicalDNA || !musicalDNA.topArtists?.length) {
       return Response.json({ error: "Invalid musical DNA" }, { status: 400 });
@@ -39,7 +38,7 @@ export async function POST(req) {
     }
 
     const ticketmasterEventSearch = await searchTicketmasterEventsForScenes(
-      tasteProfile.musicScenes
+      tasteProfile.musicScenes, from, to
     );
     let events = ticketmasterEventSearch.events;
 
@@ -328,4 +327,184 @@ Rules:
 - Use likely Ticketmaster markets: GB, CA, US, DE, NL, FR, ES.
 - No markdown.
 `;
+}
+
+async function searchTicketmasterEventsForScenes(scenes, from, to) {
+  const apiKey = process.env.TICKETMASTER_API_KEY;
+
+  if (!apiKey) {
+    return {
+      configured: false,
+      error: "Missing TICKETMASTER_API_KEY in .env.local",
+      searches: [],
+      events: []
+    };
+  }
+
+  const searches = buildTicketmasterSceneSearches(scenes).slice(0, 6);
+  const eventsById = new Map();
+  const searchResults = [];
+
+  const fromDate = from ? new Date(from) : null;
+  const toDate = to ? new Date(to) : null;
+
+  // Optional validation
+  if (fromDate && isNaN(fromDate.getTime())) {
+    return Response.json({ error: "Invalid 'from' date" }, { status: 400 });
+  }
+
+  if (toDate && isNaN(toDate.getTime())) {
+    return Response.json({ error: "Invalid 'to' date" }, { status: 400 });
+  }
+
+  for (const search of searches) {
+    try {
+      const res = await axios.get(`${TICKETMASTER_BASE_URL}/events.json`, {
+        params: {
+          apikey: apiKey,
+          keyword: search.keyword,
+          countryCode: search.countryCode,
+          classificationName: "music",
+          size: 3,
+          sort: "date,asc",
+          startDateTime: fromDate,
+          endDateTime: toDate,
+          availability: "available",
+          includeTBA: "no",
+          includeTBD: "no",
+        },
+        timeout: 8000
+      });
+
+      const events = res.data?._embedded?.events || [];
+      const normalizedEvents = events.map((event) =>
+        normalizeTicketmasterEvent(event, search)
+      );
+
+      normalizedEvents.forEach((event) => {
+        if (!eventsById.has(event.id)) {
+          eventsById.set(event.id, event);
+        }
+      });
+
+      searchResults.push({
+        ...search,
+        total: res.data?.page?.total || 0,
+        events: normalizedEvents
+      });
+    } catch (error) {
+      searchResults.push({
+        ...search,
+        total: 0,
+        error: error.response?.data || error.message,
+        events: []
+      });
+    }
+  }
+
+  return {
+    configured: true,
+    searches: searchResults,
+    events: Array.from(eventsById.values())
+  };
+}
+
+function buildTicketmasterSceneSearches(scenes) {
+  if (!Array.isArray(scenes)) {
+    return [];
+  }
+
+  return scenes.flatMap((scene) => {
+    const keywords = scene.ticketmasterKeywords || scene.keywords || [];
+    const countryCodes = scene.countryCodes || [];
+
+    return keywords.slice(0, 2).flatMap((keyword) =>
+      countryCodes.slice(0, 2).map((countryCode) => ({
+        scene: scene.scene || scene.name || "Unknown scene",
+        city: scene.city || null,
+        country: scene.country || null,
+        countryCode,
+        keyword,
+        reason: scene.reason || scene.matchReason || null
+      }))
+    );
+  });
+}
+
+function normalizeTicketmasterEvent(event, search) {
+  const venue = event._embedded?.venues?.[0];
+  const attractions = event._embedded?.attractions || [];
+
+  return {
+    id: event.id,
+    name: event.name,
+    url: event.url,
+    image: event.images?.[0]?.url || null,
+    date: event.dates?.start?.localDate || null,
+    time: event.dates?.start?.localTime || null,
+    timezone: event.dates?.timezone || null,
+    scene: search.scene,
+    matchedKeyword: search.keyword,
+    searchCountryCode: search.countryCode,
+    artists: attractions.map((attraction) => ({
+      id: attraction.id,
+      name: attraction.name,
+      url: attraction.url,
+      genre: attraction.classifications?.[0]?.genre?.name || null,
+      subGenre: attraction.classifications?.[0]?.subGenre?.name || null
+    })),
+    venue: venue
+      ? {
+          name: venue.name,
+          city: venue.city?.name || null,
+          country: venue.country?.name || null,
+          countryCode: venue.country?.countryCode || null,
+          address: venue.address?.line1 || null,
+          latitude: venue.location?.latitude || null,
+          longitude: venue.location?.longitude || null
+        }
+      : null
+  };
+}
+
+async function getTicketmasterEventsForAttraction(attractionId, apiKey) {
+  const res = await axios.get(`${TICKETMASTER_BASE_URL}/events.json`, {
+    params: {
+      apikey: apiKey,
+      attractionId,
+      size: 5,
+      sort: "date,asc"
+    }
+  });
+
+  const events = res.data?._embedded?.events || [];
+
+  return {
+    upcomingEvents: {
+      total: res.data?.page?.total || 0
+    },
+    events: events.map((event) => {
+      const venue = event._embedded?.venues?.[0];
+
+      return {
+        id: event.id,
+        name: event.name,
+        url: event.url,
+        date: event.dates?.start?.localDate || null,
+        time: event.dates?.start?.localTime || null,
+        timezone: event.dates?.timezone || null,
+        venue: venue
+          ? {
+              name: venue.name,
+              city: venue.city?.name || null,
+              country: venue.country?.name || null,
+              countryCode: venue.country?.countryCode || null,
+              address: venue.address?.line1 || null,
+              latitude: venue.location?.latitude || null,
+              longitude: venue.location?.longitude || null
+            }
+          : null
+      };
+    })
+  };
 }
