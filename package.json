@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/genai": "^1.50.1",
     "axios": "^1.15.2",
     "dotenv": "^17.4.2",
     "framer-motion": "^12.38.0",
