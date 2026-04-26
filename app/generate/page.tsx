@@ -142,14 +142,7 @@ const TRIP_GEN_STEPS = [
   },
 ] as const;
 
-function TripGenerationStepBars({ startedAt }: { startedAt: number | null }) {
-  const monotonicValueRef = useRef<[number, number, number, number]>([0, 0, 0, 0]);
-
-  useEffect(() => {
-    monotonicValueRef.current = [0, 0, 0, 0];
-  }, [startedAt]);
-
-  const elapsedMs = startedAt != null ? Math.max(0, Date.now() - startedAt) : 0;
+function TripGenerationStepBars({ elapsedMs }: { elapsedMs: number }) {
   const stepIndex = Math.min(TRIP_GEN_STEPS.length - 1, Math.floor(elapsedMs / TRIP_GEN_STEP_MS));
   const inStepT = (elapsedMs % TRIP_GEN_STEP_MS) / TRIP_GEN_STEP_MS;
   const elapsedOnFinalStep = Math.max(0, elapsedMs - LAST_STEP_INDEX * TRIP_GEN_STEP_MS);
@@ -175,14 +168,8 @@ function TripGenerationStepBars({ startedAt }: { startedAt: number | null }) {
           } else {
             next = Math.min(100, Math.round(inStepT * 100));
           }
-          const m = monotonicValueRef.current;
-          let value: number;
-          if (i > stepIndex) {
-            value = 0;
-          } else {
-            m[i] = Math.max(m[i], next);
-            value = m[i];
-          }
+          const value = i > stepIndex ? 0 : next;
+
           return (
             <div key={step.shortLabel} className="flex min-w-0 flex-col items-center gap-1.5">
               <Tooltip>
@@ -216,7 +203,7 @@ export default function GeneratePage() {
   const [api, setApi] = useState<CarouselApi | null>(null);
   const [current, setCurrent] = useState(0);
   const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null);
-  const [, setGenerationTick] = useState(0);
+  const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
   const generationInFlightRef = useRef(0);
   const generationAnchorMsRef = useRef<number | null>(null);
 
@@ -227,6 +214,7 @@ export default function GeneratePage() {
       const t = Date.now();
       generationAnchorMsRef.current = t;
       setGenerationStartedAt(t);
+      setGenerationElapsedMs(0);
     } else {
       setGenerationStartedAt(generationAnchorMsRef.current);
     }
@@ -277,6 +265,7 @@ export default function GeneratePage() {
       if (generationInFlightRef.current === 0) {
         generationAnchorMsRef.current = null;
         setGenerationStartedAt(null);
+        setGenerationElapsedMs(0);
       }
     }
   }, []);
@@ -284,7 +273,7 @@ export default function GeneratePage() {
   useEffect(() => {
     if (!loading || generationStartedAt == null) return;
     const id = window.setInterval(() => {
-      setGenerationTick((n) => n + 1);
+      setGenerationElapsedMs(Math.max(0, Date.now() - generationStartedAt));
     }, 200);
     return () => window.clearInterval(id);
   }, [loading, generationStartedAt]);
@@ -369,7 +358,7 @@ export default function GeneratePage() {
         {status === 'authenticated' && loading && (
           <Card className="w-full">
             <CardContent className="flex flex-col items-center justify-center gap-5 py-12">
-              <TripGenerationStepBars startedAt={generationStartedAt} />
+              <TripGenerationStepBars elapsedMs={generationElapsedMs} />
             </CardContent>
           </Card>
         )}
