@@ -23,9 +23,14 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const { musicalDNA, excludedEventIds = [] } = body;
+    const { musicalDNA, excludedEventIds = [], excludedArtistNames = [] } = body;
     const excludedEventIdSet = new Set(
       Array.isArray(excludedEventIds) ? excludedEventIds.filter(Boolean) : []
+    );
+    const excludedArtistSet = new Set(
+      Array.isArray(excludedArtistNames)
+        ? excludedArtistNames.map(normalizeSearchText).filter(Boolean)
+        : []
     );
 
     if (!musicalDNA || !musicalDNA.topArtists?.length) {
@@ -64,7 +69,14 @@ export async function POST(req) {
     }
 
     const availableEvents = events.filter((event) => !excludedEventIdSet.has(event.id));
-    const recommendationEvents = availableEvents.length ? availableEvents : events;
+    const artistFilteredEvents = availableEvents.filter(
+      (event) => !hasExcludedArtist(event, excludedArtistSet)
+    );
+    const recommendationEvents = artistFilteredEvents.length
+      ? artistFilteredEvents
+      : availableEvents.length
+        ? availableEvents
+        : events;
 
     const recommendations = buildMainRecommendations(
       musicalDNA,
@@ -433,10 +445,10 @@ function getRelatedDiscoveryKeywords(genreText) {
 function buildMainRecommendations(dna, tasteProfile, events) {
   const selected = selectBestProfileMatches(dna, tasteProfile, events).slice(
     0,
-    CATEGORIES.length
+    CATEGORIES.length * 4
   );
 
-  return selected.map((event, index) => {
+  return dedupeEventsByDiscoveryArtist(selected).slice(0, CATEGORIES.length).map((event, index) => {
     const scene = findSceneForEvent(tasteProfile.musicScenes, event);
     const city = getEventCity(event, scene);
     const country = getEventCountry(event, scene);
@@ -463,6 +475,39 @@ function buildMainRecommendations(dna, tasteProfile, events) {
       image: event.image || null
     };
   });
+}
+
+function dedupeEventsByDiscoveryArtist(events) {
+  const seenArtists = new Set();
+
+  return events.filter((event) => {
+    const artist = getEventDiscoveryArtist(event);
+    const artistKey = normalizeSearchText(artist || event.name || event.id);
+
+    if (!artistKey || seenArtists.has(artistKey)) {
+      return false;
+    }
+
+    seenArtists.add(artistKey);
+    return true;
+  });
+}
+
+function hasExcludedArtist(event, excludedArtistSet) {
+  if (!excludedArtistSet.size) {
+    return false;
+  }
+
+  const artistNames = [
+    getEventDiscoveryArtist(event),
+    ...(event?.artists || []).map((artist) => artist?.name)
+  ];
+
+  return artistNames.some((artist) => excludedArtistSet.has(normalizeSearchText(artist)));
+}
+
+function getEventDiscoveryArtist(event) {
+  return event?.artists?.[0]?.name || event?.name || null;
 }
 
 function selectBestProfileMatches(dna, tasteProfile, events) {

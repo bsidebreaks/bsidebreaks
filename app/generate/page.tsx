@@ -57,6 +57,7 @@ type RecommendationResponse = {
 };
 
 const SEEN_EVENT_IDS_KEY = 'bsidebreaks.seenEventIds';
+const SEEN_ARTIST_NAMES_KEY = 'bsidebreaks.seenArtistNames';
 
 function mapApiError(message?: string) {
   const normalized = (message || '').toLowerCase();
@@ -101,6 +102,35 @@ function rememberSeenEventIds(recommendations: Recommendation[]) {
   const uniqueIds = [...new Set(nextIds)].slice(-60);
 
   window.sessionStorage.setItem(SEEN_EVENT_IDS_KEY, JSON.stringify(uniqueIds));
+}
+
+function readSeenArtistNames() {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const value = window.sessionStorage.getItem(SEEN_ARTIST_NAMES_KEY);
+    const parsed = value ? JSON.parse(value) : [];
+
+    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberSeenArtistNames(recommendations: Recommendation[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const nextNames = [
+    ...readSeenArtistNames(),
+    ...recommendations.map((recommendation) => recommendation.discovery_artist).filter((name): name is string => Boolean(name)),
+  ];
+  const uniqueNames = [...new Set(nextNames)].slice(-120);
+
+  window.sessionStorage.setItem(SEEN_ARTIST_NAMES_KEY, JSON.stringify(uniqueNames));
 }
 
 /** Resolves when the browser has fetched the image (avoids `background-image` painting black until decode). */
@@ -238,6 +268,7 @@ export default function GeneratePage() {
         body: JSON.stringify({
           musicalDNA: dnaData.musicalDNA,
           excludedEventIds: readSeenEventIds(),
+          excludedArtistNames: readSeenArtistNames(),
         }),
       });
 
@@ -253,6 +284,7 @@ export default function GeneratePage() {
         await Promise.all(heroUrls.map(preloadImage));
       }
       rememberSeenEventIds(recs);
+      rememberSeenArtistNames(recs);
       setCurrent(0);
       setRecommendations(recs);
     } catch (requestError) {
