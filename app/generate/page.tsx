@@ -103,35 +103,6 @@ function rememberSeenEventIds(recommendations: Recommendation[]) {
   window.sessionStorage.setItem(SEEN_EVENT_IDS_KEY, JSON.stringify(uniqueIds));
 }
 
-function readSeenEventIds() {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  try {
-    const value = window.sessionStorage.getItem(SEEN_EVENT_IDS_KEY);
-    const parsed = value ? JSON.parse(value) : [];
-
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function rememberSeenEventIds(recommendations: Recommendation[]) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const nextIds = [
-    ...readSeenEventIds(),
-    ...recommendations.map((recommendation) => recommendation.event_id).filter((id): id is string => Boolean(id)),
-  ];
-  const uniqueIds = [...new Set(nextIds)].slice(-60);
-
-  window.sessionStorage.setItem(SEEN_EVENT_IDS_KEY, JSON.stringify(uniqueIds));
-}
-
 /** Resolves when the browser has fetched the image (avoids `background-image` painting black until decode). */
 function preloadImage(url: string) {
   return new Promise<void>((resolve) => {
