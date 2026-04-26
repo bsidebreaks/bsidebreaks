@@ -2,7 +2,7 @@ import axios from "axios";
 
 const BASE_URL = "https://api.spotify.com/v1";
 const TICKETMASTER_BASE_URL = "https://app.ticketmaster.com/discovery/v2";
-const TICKETMASTER_SCENE_SEARCH_LIMIT = 18;
+const TICKETMASTER_SCENE_SEARCH_LIMIT = 32;
 const TICKETMASTER_SCENE_TIMEOUT_MS = 3500;
 
 export async function getTopArtists(accessToken) {

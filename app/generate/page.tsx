@@ -56,9 +56,6 @@ type RecommendationResponse = {
   error?: string;
 };
 
-const SEEN_EVENT_IDS_KEY = 'bsidebreaks.seenEventIds';
-const SEEN_ARTIST_NAMES_KEY = 'bsidebreaks.seenArtistNames';
-
 function mapApiError(message?: string) {
   const normalized = (message || '').toLowerCase();
   if (normalized.includes('spotify session expired')) {
@@ -73,64 +70,6 @@ function googleMapsSearchUrl(query: string) {
 
 function heroImageUrl(t: Recommendation) {
   return (t.location_photo || t.image || '').trim() || null;
-}
-
-function readSeenEventIds() {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  try {
-    const value = window.sessionStorage.getItem(SEEN_EVENT_IDS_KEY);
-    const parsed = value ? JSON.parse(value) : [];
-
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function rememberSeenEventIds(recommendations: Recommendation[]) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const nextIds = [
-    ...readSeenEventIds(),
-    ...recommendations.map((recommendation) => recommendation.event_id).filter((id): id is string => Boolean(id)),
-  ];
-  const uniqueIds = [...new Set(nextIds)].slice(-60);
-
-  window.sessionStorage.setItem(SEEN_EVENT_IDS_KEY, JSON.stringify(uniqueIds));
-}
-
-function readSeenArtistNames() {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  try {
-    const value = window.sessionStorage.getItem(SEEN_ARTIST_NAMES_KEY);
-    const parsed = value ? JSON.parse(value) : [];
-
-    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function rememberSeenArtistNames(recommendations: Recommendation[]) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const nextNames = [
-    ...readSeenArtistNames(),
-    ...recommendations.map((recommendation) => recommendation.discovery_artist).filter((name): name is string => Boolean(name)),
-  ];
-  const uniqueNames = [...new Set(nextNames)].slice(-120);
-
-  window.sessionStorage.setItem(SEEN_ARTIST_NAMES_KEY, JSON.stringify(uniqueNames));
 }
 
 /** Resolves when the browser has fetched the image (avoids `background-image` painting black until decode). */
@@ -224,7 +163,7 @@ function TripGenerationStepBars({ elapsedMs }: { elapsedMs: number }) {
 }
 
 export default function GeneratePage() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -234,10 +173,16 @@ export default function GeneratePage() {
   const [current, setCurrent] = useState(0);
   const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null);
   const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
+  const [noMoreTrips, setNoMoreTrips] = useState(false);
   const generationInFlightRef = useRef(0);
   const generationAnchorMsRef = useRef<number | null>(null);
+  const seenEventIdsRef = useRef<string[]>([]);
+  const seenArtistNamesRef = useRef<string[]>([]);
+  const emptyTripAttemptsRef = useRef(0);
 
   const generateTrips = useCallback(async () => {
+    if (noMoreTrips) return;
+
     setLoading(true);
     generationInFlightRef.current += 1;
     if (generationAnchorMsRef.current == null) {
@@ -267,8 +212,8 @@ export default function GeneratePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           musicalDNA: dnaData.musicalDNA,
-          excludedEventIds: readSeenEventIds(),
-          excludedArtistNames: readSeenArtistNames(),
+          excludedEventIds: seenEventIdsRef.current,
+          excludedArtistNames: seenArtistNamesRef.current,
         }),
       });
 
@@ -283,8 +228,26 @@ export default function GeneratePage() {
       if (heroUrls.length) {
         await Promise.all(heroUrls.map(preloadImage));
       }
-      rememberSeenEventIds(recs);
-      rememberSeenArtistNames(recs);
+      if (recs.length) {
+        seenEventIdsRef.current = [
+          ...new Set([
+            ...seenEventIdsRef.current,
+            ...recs.map((recommendation) => recommendation.event_id).filter((id): id is string => Boolean(id)),
+          ]),
+        ].slice(-60);
+        seenArtistNamesRef.current = [
+          ...new Set([
+            ...seenArtistNamesRef.current,
+            ...recs.map((recommendation) => recommendation.discovery_artist).filter((name): name is string => Boolean(name)),
+          ]),
+        ].slice(-120);
+        emptyTripAttemptsRef.current = 0;
+      } else {
+        emptyTripAttemptsRef.current += 1;
+        if (emptyTripAttemptsRef.current >= 2) {
+          setNoMoreTrips(true);
+        }
+      }
       setCurrent(0);
       setRecommendations(recs);
     } catch (requestError) {
@@ -300,7 +263,7 @@ export default function GeneratePage() {
         setGenerationElapsedMs(0);
       }
     }
-  }, []);
+  }, [noMoreTrips]);
 
   useEffect(() => {
     if (!loading || generationStartedAt == null) return;
@@ -336,6 +299,13 @@ export default function GeneratePage() {
   }, [api]);
 
   const spotifyExpired = error?.toLowerCase().includes('spotify session expired');
+  const user = session?.user;
+  const clearLocalGenerationState = useCallback(() => {
+    seenEventIdsRef.current = [];
+    seenArtistNamesRef.current = [];
+    emptyTripAttemptsRef.current = 0;
+    setNoMoreTrips(false);
+  }, []);
 
   const showTrips = !loading && !error && recommendations.length > 0;
   const trip = showTrips ? recommendations[Math.min(current, recommendations.length - 1)] : undefined;
@@ -363,16 +333,26 @@ export default function GeneratePage() {
 
       <div className="relative z-10 flex w-full max-w-md flex-col items-center gap-8">
         <header className="flex w-full items-center justify-between">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight text-white">Your trips</h1>
-            <p className="text-sm text-muted-foreground text-olive-200">Picked from your Spotify taste</p>
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              {user?.image && <img src={user.image} alt="" className="size-7 shrink-0 rounded-full object-cover" />}
+              <div className="min-w-0">
+                <p className="truncate text-sm text-white/85">{user?.name || 'Spotify user'}</p>
+                {user?.email && <p className="truncate text-xs text-white/55">{user.email}</p>}
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground text-olive-200">Picked from your Spotify taste</p>
           </div>
           <Button
             variant="ghost"
             size="icon"
             className="text-white hover:text-white/80"
             aria-label="Logout"
-            onClick={() => signOut({ callbackUrl: '/' })}
+            onClick={() => {
+              clearLocalGenerationState();
+              void signOut({ callbackUrl: '/' });
+            }}
           >
             <LogOut className="size-4" />
           </Button>
@@ -403,7 +383,13 @@ export default function GeneratePage() {
             </CardHeader>
             <CardFooter className="border-t border-zinc-800/80 bg-zinc-900/40">
               {spotifyExpired ? (
-                <Button className="w-full" onClick={() => signOut({ callbackUrl: '/' })}>
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    clearLocalGenerationState();
+                    void signOut({ callbackUrl: '/' });
+                  }}
+                >
                   <LogIn className="size-4" />
                   Reconnect Spotify
                 </Button>
@@ -420,15 +406,17 @@ export default function GeneratePage() {
         {!loading && !error && recommendations.length === 0 && (
           <Card className="w-full border-zinc-800/90 bg-zinc-950 text-zinc-50 shadow-lg">
             <CardHeader>
-              <CardTitle className="font-semibold text-white">No trips found</CardTitle>
+              <CardTitle className="font-semibold text-white">{noMoreTrips ? 'No more trips available' : 'No trips found'}</CardTitle>
               <CardDescription className="text-zinc-400">
-                We couldn&apos;t match any live events to your taste right now. Try again in a moment.
+                {noMoreTrips
+                  ? 'No more trips available for your current tastes.'
+                  : "We couldn't match any live events to your taste right now. Try again in a moment."}
               </CardDescription>
             </CardHeader>
             <CardFooter className="border-t border-zinc-800/80 bg-zinc-900/40">
-              <Button className="w-full" onClick={() => void generateTrips()}>
+              <Button className="w-full" onClick={() => void generateTrips()} disabled={noMoreTrips}>
                 <RotateCcw className="size-4" />
-                Try again
+                {noMoreTrips ? 'No more trips' : 'Try again'}
               </Button>
             </CardFooter>
           </Card>
@@ -524,7 +512,10 @@ function TripCard({ trip, index, total }: { trip: Recommendation; index: number;
           aria-label="View full trip details"
         >
           <CardContent className="space-y-4 px-6 text-sm">
-            <p className="leading-relaxed text-muted-foreground">{trip.reasoning || 'Picked from your closest music scene match.'}</p>
+            <div className="rounded-md bg-muted/50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reasoning</p>
+              <p className="mt-1 leading-relaxed text-muted-foreground">{trip.reasoning || 'Picked from your closest music scene match.'}</p>
+            </div>
             <div className="space-y-2.5 border-t pt-4">
               <InfoRow icon={<Calendar className="size-4" />} label={trip.event_date || 'Date TBD'} />
               <InfoRow

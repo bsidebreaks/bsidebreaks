@@ -53,10 +53,11 @@ export async function POST(req) {
     }
 
     const fallbackProfile = buildFallbackTasteProfile(musicalDNA, tasteProfile);
-    const searchScenes = [
-      ...tasteProfile.musicScenes,
-      ...fallbackProfile.musicScenes
-    ];
+    const searchScenes = buildSearchScenesForRecommendation({
+      tasteProfile,
+      fallbackProfile,
+      excludedArtistSet
+    });
     const ticketmasterEventSearch = await searchTicketmasterEventsForScenes(searchScenes);
     let events = ticketmasterEventSearch.events;
 
@@ -68,15 +69,12 @@ export async function POST(req) {
       events = mergeEventsById(events, fallbackEventSearch.events);
     }
 
-    const availableEvents = events.filter((event) => !excludedEventIdSet.has(event.id));
-    const artistFilteredEvents = availableEvents.filter(
+    const unseenEvents = events.filter((event) => !excludedEventIdSet.has(event.id));
+    const artistFilteredEvents = unseenEvents.filter(
       (event) => !hasExcludedArtist(event, excludedArtistSet)
     );
-    const recommendationEvents = artistFilteredEvents.length
-      ? artistFilteredEvents
-      : availableEvents.length
-        ? availableEvents
-        : events;
+    const hasExclusions = excludedEventIdSet.size > 0 || excludedArtistSet.size > 0;
+    const recommendationEvents = hasExclusions ? artistFilteredEvents : events;
 
     const recommendations = buildMainRecommendations(
       musicalDNA,
@@ -264,10 +262,12 @@ function buildLocalTasteProfile(dna) {
     : [];
 
   const genres = Array.isArray(dna.topGenres) ? dna.topGenres.filter(Boolean) : [];
-  const relatedKeywords = getRelatedDiscoveryKeywords([...genres, ...artists].join(" "));
-  const keywords = [...genres, ...artists, ...relatedKeywords].filter(Boolean);
+  const keywords = buildDynamicDiscoveryKeywords({
+    artists,
+    genres
+  });
   const primaryGenres = genres.length ? genres : artists.slice(0, 2);
-  const fallbackKeywords = keywords.length ? keywords : ["live music", "indie", "electronic"];
+  const fallbackKeywords = keywords.length ? keywords : artists;
   const markets = [
     { city: "London", country: "United Kingdom", countryCodes: ["GB"] },
     { city: "Toronto", country: "Canada", countryCodes: ["CA"] },
@@ -368,13 +368,17 @@ function buildFallbackTasteProfile(dna, tasteProfile) {
     ...artists.slice(0, 3),
     ...(tasteProfile.coreGenres || []).slice(0, 2),
     ...(tasteProfile.adjacentGenres || []).slice(0, 2),
-    ...getRelatedDiscoveryKeywords(
-      [
-        ...artists,
+    ...buildDynamicDiscoveryKeywords({
+      artists,
+      genres: [
         ...(tasteProfile.coreGenres || []),
         ...(tasteProfile.adjacentGenres || [])
-      ].join(" ")
-    )
+      ],
+      scenes: [
+        ...(tasteProfile.musicScenes || []),
+        ...(tasteProfile.fallbackMusicScenes || [])
+      ]
+    })
   ].filter(Boolean);
   const uniqueKeywords = [...new Set(keywords)];
 
@@ -382,6 +386,46 @@ function buildFallbackTasteProfile(dna, tasteProfile) {
     ...tasteProfile,
     musicScenes: buildLocalFallbackScenes(uniqueKeywords)
   };
+}
+
+function buildSearchScenesForRecommendation({ tasteProfile, fallbackProfile, excludedArtistSet }) {
+  const primaryScenes = Array.isArray(tasteProfile.musicScenes) ? tasteProfile.musicScenes : [];
+  const fallbackScenes = Array.isArray(fallbackProfile.musicScenes) ? fallbackProfile.musicScenes : [];
+
+  if (!excludedArtistSet.size) {
+    return [...primaryScenes, ...fallbackScenes];
+  }
+
+  const broadFallbackScenes = fallbackScenes.filter(
+    (scene) => !sceneHasExcludedArtistKeyword(scene, excludedArtistSet)
+  );
+  const exactFallbackScenes = fallbackScenes.filter((scene) =>
+    sceneHasExcludedArtistKeyword(scene, excludedArtistSet)
+  );
+  const newPrimaryScenes = primaryScenes.filter(
+    (scene) => !sceneHasExcludedArtistKeyword(scene, excludedArtistSet)
+  );
+  const oldPrimaryScenes = primaryScenes.filter((scene) =>
+    sceneHasExcludedArtistKeyword(scene, excludedArtistSet)
+  );
+
+  return [
+    ...broadFallbackScenes,
+    ...newPrimaryScenes,
+    ...exactFallbackScenes,
+    ...oldPrimaryScenes
+  ];
+}
+
+function sceneHasExcludedArtistKeyword(scene, excludedArtistSet) {
+  const values = [
+    scene?.scene,
+    scene?.name,
+    ...(scene?.ticketmasterKeywords || []),
+    ...(scene?.keywords || [])
+  ];
+
+  return values.some((value) => excludedArtistSet.has(normalizeSearchText(value)));
 }
 
 function buildLocalFallbackScenes(keywords, markets = null) {
@@ -412,47 +456,52 @@ function buildLocalFallbackScenes(keywords, markets = null) {
   });
 }
 
-function getRelatedDiscoveryKeywords(genreText) {
-  const text = normalizeSearchText(genreText);
+function buildDynamicDiscoveryKeywords({ artists = [], genres = [], scenes = [] }) {
+  const sceneKeywords = scenes.flatMap((scene) => [
+    scene?.scene,
+    scene?.vibe,
+    ...(scene?.ticketmasterKeywords || []),
+    ...(scene?.keywords || [])
+  ]);
+  const sourceValues = [...genres, ...sceneKeywords, ...artists].filter(Boolean);
+  const keywords = [];
 
-  if (
-    /(punjabi|bhangra|bollywood|desi|indian|hindi|diljit|karan aujla|yo yo honey singh|honey singh|shashwat sachdev|arijit|sidhu|ap dhillon)/.test(
-      text
-    )
-  ) {
-    return ["punjabi", "bhangra", "bollywood", "desi"];
+  sourceValues.forEach((value) => {
+    const phrase = normalizeKeywordPhrase(value);
+
+    if (!phrase) {
+      return;
+    }
+
+    keywords.push(phrase);
+
+    phrase
+      .split(" ")
+      .filter((part) => part.length > 2)
+      .forEach((part) => keywords.push(part));
+  });
+
+  return [...new Set(keywords)].slice(0, 12);
+}
+
+function normalizeKeywordPhrase(value) {
+  const normalized = normalizeSearchText(value);
+
+  if (!normalized || /^\d+$/.test(normalized)) {
+    return null;
   }
 
-  if (/(reggaeton|latin|urbano|bachata|salsa)/.test(text)) {
-    return ["latin", "reggaeton", "urbano"];
-  }
-
-  if (/(techno|house|edm|electronic|dance)/.test(text)) {
-    return ["electronic", "techno", "house"];
-  }
-
-  if (/(rap|hip hop|trap|r&b|soul)/.test(text)) {
-    return ["hip hop", "rap", "r&b", "soul"];
-  }
-
-  if (/(rock|metal|punk|alternative|indie)/.test(text)) {
-    return ["indie", "alternative", "rock", "punk"];
-  }
-
-  return [];
+  return normalized;
 }
 
 function buildMainRecommendations(dna, tasteProfile, events) {
-  const selected = selectBestProfileMatches(dna, tasteProfile, events).slice(
-    0,
-    CATEGORIES.length * 4
-  );
+  const selected = selectDiverseProfileMatches(dna, tasteProfile, events, CATEGORIES.length);
 
-  return dedupeEventsByDiscoveryArtist(selected).slice(0, CATEGORIES.length).map((event, index) => {
+  return selected.map((event, index) => {
     const scene = findSceneForEvent(tasteProfile.musicScenes, event);
     const city = getEventCity(event, scene);
     const country = getEventCountry(event, scene);
-    const discoveryArtist = event.artists?.[0]?.name || event.name;
+    const discoveryArtist = getEventDiscoveryArtist(event) || event.name;
     const destinationIata = getIataForCity(city);
 
     return {
@@ -477,37 +526,52 @@ function buildMainRecommendations(dna, tasteProfile, events) {
   });
 }
 
-function dedupeEventsByDiscoveryArtist(events) {
-  const seenArtists = new Set();
-
-  return events.filter((event) => {
-    const artist = getEventDiscoveryArtist(event);
-    const artistKey = normalizeSearchText(artist || event.name || event.id);
-
-    if (!artistKey || seenArtists.has(artistKey)) {
-      return false;
-    }
-
-    seenArtists.add(artistKey);
-    return true;
-  });
-}
-
 function hasExcludedArtist(event, excludedArtistSet) {
   if (!excludedArtistSet.size) {
     return false;
   }
 
-  const artistNames = [
-    getEventDiscoveryArtist(event),
-    ...(event?.artists || []).map((artist) => artist?.name)
-  ];
-
-  return artistNames.some((artist) => excludedArtistSet.has(normalizeSearchText(artist)));
+  return getEventArtistNameKeys(event).some((artistKey) => excludedArtistSet.has(artistKey));
 }
 
 function getEventDiscoveryArtist(event) {
   return event?.artists?.[0]?.name || event?.name || null;
+}
+
+function getEventArtistKeys(event) {
+  const artists = Array.isArray(event?.artists) ? event.artists : [];
+  const artistKeys = artists.flatMap((artist) => {
+    const keys = [];
+    const id = normalizeSearchText(artist?.id);
+    const name = normalizeSearchText(artist?.name);
+
+    if (id) {
+      keys.push(`id:${id}`);
+    }
+
+    if (name) {
+      keys.push(`name:${name}`);
+    }
+
+    return keys;
+  });
+
+  if (artistKeys.length) {
+    return [...new Set(artistKeys)];
+  }
+
+  const fallbackName = normalizeSearchText(event?.name);
+  return fallbackName ? [`event:${fallbackName}`] : [];
+}
+
+function getEventArtistNameKeys(event) {
+  const artists = Array.isArray(event?.artists) ? event.artists : [];
+  const nameKeys = artists
+    .map((artist) => normalizeSearchText(artist?.name))
+    .filter(Boolean);
+  const fallbackName = normalizeSearchText(event?.name);
+
+  return [...new Set(nameKeys.length ? nameKeys : fallbackName ? [fallbackName] : [])];
 }
 
 function selectBestProfileMatches(dna, tasteProfile, events) {
@@ -523,6 +587,71 @@ function selectBestProfileMatches(dna, tasteProfile, events) {
     }))
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map(({ event }) => event);
+}
+
+function selectDiverseProfileMatches(dna, tasteProfile, events, limit) {
+  const candidates = selectBestProfileMatches(dna, tasteProfile, events)
+    .map((event, index) => ({
+      event,
+      index,
+      baseScore: scoreEventForProfile(event, dna, tasteProfile)
+    }));
+  const selected = [];
+  const selectedArtistKeys = new Set();
+  const selectedCityKeys = new Set();
+  const selectedSceneKeys = new Set();
+
+  while (selected.length < limit && candidates.length) {
+    let bestCandidateIndex = -1;
+    let bestAdjustedScore = -Infinity;
+
+    candidates.forEach((candidate, index) => {
+      const event = candidate.event;
+      const artistKeys = getEventArtistKeys(event);
+      const cityKey = normalizeSearchText(getEventCity(event));
+      const sceneKey = normalizeSearchText(event.scene || event.matchedKeyword);
+      let adjustedScore = candidate.baseScore;
+
+      if (selected.length > 0) {
+        if (artistKeys.some((artistKey) => selectedArtistKeys.has(artistKey))) {
+          adjustedScore -= 1000;
+        }
+
+        if (cityKey && selectedCityKeys.has(cityKey)) {
+          adjustedScore -= 45;
+        }
+
+        if (sceneKey && selectedSceneKeys.has(sceneKey)) {
+          adjustedScore -= 25;
+        }
+
+        adjustedScore += Math.min(30, candidate.index * 2);
+      }
+
+      if (adjustedScore > bestAdjustedScore) {
+        bestAdjustedScore = adjustedScore;
+        bestCandidateIndex = index;
+      }
+    });
+
+    if (bestCandidateIndex < 0) {
+      break;
+    }
+
+    const [bestCandidate] = candidates.splice(bestCandidateIndex, 1);
+    const artistKeys = getEventArtistKeys(bestCandidate.event);
+
+    if (artistKeys.some((artistKey) => selectedArtistKeys.has(artistKey))) {
+      continue;
+    }
+
+    selected.push(bestCandidate.event);
+    artistKeys.forEach((artistKey) => selectedArtistKeys.add(artistKey));
+    selectedCityKeys.add(normalizeSearchText(getEventCity(bestCandidate.event)));
+    selectedSceneKeys.add(normalizeSearchText(bestCandidate.event.scene || bestCandidate.event.matchedKeyword));
+  }
+
+  return selected;
 }
 
 function scoreEventForProfile(event, dna, tasteProfile) {
@@ -688,29 +817,29 @@ Infer related music scenes, not the exact same artists. Focus on live music scen
 
 Return ONLY valid compact JSON:
 {
-  "coreGenres": ["Punjabi pop"],
-  "adjacentGenres": ["UK Asian underground"],
+  "coreGenres": ["genre inferred from the user's Spotify data"],
+  "adjacentGenres": ["adjacent scene inferred from the user's Spotify data"],
   "musicScenes": [
     {
-      "scene": "Punjabi diaspora club nights",
-      "city": "Birmingham",
-      "country": "United Kingdom",
-      "countryCodes": ["GB"],
-      "ticketmasterKeywords": ["punjabi", "bhangra"],
-      "reason": "Related to Punjabi pop, but more local and exploratory.",
-      "vibe": "Punjabi pop meets diaspora nightlife",
+      "scene": "specific live scene inferred from the user's artists and genres",
+      "city": "city with likely Ticketmaster supply",
+      "country": "country with likely Ticketmaster supply",
+      "countryCodes": ["country code"],
+      "ticketmasterKeywords": ["search keyword from Spotify data", "related scene keyword"],
+      "reason": "Why this live scene follows from the user's Spotify taste.",
+      "vibe": "short playlist-like vibe label",
       "adventureLevel": 4
     }
   ],
   "fallbackMusicScenes": [
     {
-      "scene": "Punjabi live discovery",
+      "scene": "broader live discovery scene inferred from the same taste data",
       "city": null,
       "country": null,
-      "countryCodes": ["CA"],
-      "ticketmasterKeywords": ["punjabi"],
-      "reason": "Broader fallback still grounded in the user's Punjabi pop taste.",
-      "vibe": "Punjabi live discovery",
+      "countryCodes": ["country code"],
+      "ticketmasterKeywords": ["broader keyword from Spotify data"],
+      "reason": "Broader fallback still grounded in the user's artists, tracks, and genres.",
+      "vibe": "broader live discovery vibe",
       "adventureLevel": 3
     }
   ]
@@ -723,7 +852,7 @@ Rules:
 - Each ticketmasterKeywords array should contain 1 or 2 short keywords.
 - Use likely Ticketmaster markets: GB, CA, US, DE, NL, FR, ES.
 - fallbackMusicScenes must be broader than musicScenes but still directly inferred from the user's artists, tracks, and genres.
-- Do not use generic fallback keywords like "pop", "indie", "festival", or "live music" unless they are clearly present in the user's Spotify data.
+- Do not use generic fallback keywords unless they are clearly present in the user's Spotify data.
 - No markdown.
 `;
 }

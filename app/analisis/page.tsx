@@ -32,8 +32,10 @@ type AnalyticsOverview = {
   recentRecommendationLog: Array<{
     userKey: string;
     userName?: string;
+    userImage?: string;
     artist?: string;
     eventName?: string;
+    reasoning?: string;
     city?: string;
     country?: string;
     createdAt?: string | Date;
@@ -286,12 +288,13 @@ export default async function AnalisisPage() {
           </Panel>
           
           <Panel title="Recent recommendation log">
-            <ResponsiveTable minWidth="680px">
+            <ResponsiveTable minWidth="860px">
               <thead className="text-xs uppercase text-zinc-500">
                 <tr>
                   <th className="pb-3 font-medium">User</th>
                   <th className="pb-3 font-medium">Artist</th>
                   <th className="pb-3 font-medium">Event</th>
+                  <th className="pb-3 font-medium">Reasoning</th>
                   <th className="pb-3 font-medium">Destination</th>
                   <th className="pb-3 font-medium">Logged at</th>
                 </tr>
@@ -299,9 +302,22 @@ export default async function AnalisisPage() {
               <tbody className="divide-y divide-zinc-200 text-zinc-700">
                 {data.recentRecommendationLog.map((item) => (
                   <tr key={`${item.userKey}-${item.artist}-${item.eventName}-${String(item.createdAt)}`}>
-                    <td className="py-3 pr-4">{item.userName || item.userKey}</td>
+                    <td className="py-3 pr-4">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {item.userImage ? (
+                          <img src={item.userImage} alt="" className="size-7 shrink-0 rounded-full object-cover" />
+                        ) : (
+                          <span className="size-7 shrink-0 rounded-full bg-zinc-200" aria-hidden />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-zinc-950">{item.userName || "Unknown user"}</p>
+                          <p className="truncate text-xs text-zinc-500">{item.userKey}</p>
+                        </div>
+                      </div>
+                    </td>
                     <td className="py-3 pr-4 font-medium text-zinc-950">{item.artist || "-"}</td>
                     <td className="py-3 pr-4">{item.eventName || "-"}</td>
+                    <td className="max-w-72 py-3 pr-4 text-sm text-zinc-600">{item.reasoning || "-"}</td>
                     <td className="py-3 pr-4">{[item.city, item.country].filter(Boolean).join(", ") || "-"}</td>
                     <td className="py-3">{item.createdAt ? new Date(item.createdAt).toLocaleString("en-US") : "-"}</td>
                   </tr>
