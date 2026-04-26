@@ -32,6 +32,7 @@ type MusicalDNA = {
 };
 
 type Recommendation = {
+  event_id?: string;
   destination?: string;
   city?: string;
   country?: string;
@@ -53,6 +54,8 @@ type RecommendationResponse = {
   error?: string;
 };
 
+const SEEN_EVENT_IDS_KEY = 'bsidebreaks.seenEventIds';
+
 function mapApiError(message?: string) {
   const normalized = (message || '').toLowerCase();
   if (normalized.includes('spotify session expired')) {
@@ -67,6 +70,35 @@ function googleMapsSearchUrl(query: string) {
 
 function heroImageUrl(t: Recommendation) {
   return (t.location_photo || t.image || "").trim() || null;
+}
+
+function readSeenEventIds() {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const value = window.sessionStorage.getItem(SEEN_EVENT_IDS_KEY);
+    const parsed = value ? JSON.parse(value) : [];
+
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberSeenEventIds(recommendations: Recommendation[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const nextIds = [
+    ...readSeenEventIds(),
+    ...recommendations.map((recommendation) => recommendation.event_id).filter((id): id is string => Boolean(id)),
+  ];
+  const uniqueIds = [...new Set(nextIds)].slice(-60);
+
+  window.sessionStorage.setItem(SEEN_EVENT_IDS_KEY, JSON.stringify(uniqueIds));
 }
 
 /** Resolves when the browser has fetched the image (avoids `background-image` painting black until decode). */
@@ -112,7 +144,10 @@ export default function GeneratePage() {
       const recsRes = await fetch('/api/recommendations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ musicalDNA: dnaData.musicalDNA }),
+        body: JSON.stringify({
+          musicalDNA: dnaData.musicalDNA,
+          excludedEventIds: readSeenEventIds(),
+        }),
       });
 
       const recsData = (await recsRes.json()) as RecommendationResponse;
@@ -126,6 +161,8 @@ export default function GeneratePage() {
       if (heroUrls.length) {
         await Promise.all(heroUrls.map(preloadImage));
       }
+      rememberSeenEventIds(recs);
+      setCurrent(0);
       setRecommendations(recs);
     } catch (requestError) {
       const message =
@@ -151,11 +188,12 @@ export default function GeneratePage() {
 
   useEffect(() => {
     if (!api) return;
-    setCurrent(api.selectedScrollSnap());
     const onSelect = () => setCurrent(api.selectedScrollSnap());
+    const timer = window.setTimeout(onSelect, 0);
     api.on('select', onSelect);
     api.on('reInit', onSelect);
     return () => {
+      window.clearTimeout(timer);
       api.off('select', onSelect);
     };
   }, [api]);

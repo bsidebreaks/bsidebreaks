@@ -2,6 +2,8 @@ import axios from "axios";
 
 const BASE_URL = "https://api.spotify.com/v1";
 const TICKETMASTER_BASE_URL = "https://app.ticketmaster.com/discovery/v2";
+const TICKETMASTER_SCENE_SEARCH_LIMIT = 18;
+const TICKETMASTER_SCENE_TIMEOUT_MS = 3500;
 
 export async function getTopArtists(accessToken) {
   const res = await axios.get(`${BASE_URL}/me/top/artists`, {
@@ -172,49 +174,60 @@ export async function searchTicketmasterEventsForScenes(scenes) {
     };
   }
 
-  const searches = buildTicketmasterSceneSearches(scenes).slice(0, 6);
+  const searches = buildTicketmasterSceneSearches(scenes).slice(
+    0,
+    TICKETMASTER_SCENE_SEARCH_LIMIT
+  );
   const eventsById = new Map();
-  const searchResults = [];
 
-  for (const search of searches) {
-    try {
-      const res = await axios.get(`${TICKETMASTER_BASE_URL}/events.json`, {
-        params: {
-          apikey: apiKey,
-          keyword: search.keyword,
-          countryCode: search.countryCode,
-          classificationName: "music",
-          size: 3,
-          sort: "date,asc"
-        },
-        timeout: 8000
-      });
+  const searchResults = await Promise.all(
+    searches.map(async (search) => {
+      try {
+        const params = {
+            apikey: apiKey,
+            keyword: search.keyword,
+            classificationName: "music",
+            size: 3,
+            sort: "date,asc"
+          };
 
-      const events = res.data?._embedded?.events || [];
-      const normalizedEvents = events.map((event) =>
-        normalizeTicketmasterEvent(event, search)
-      );
-
-      normalizedEvents.forEach((event) => {
-        if (!eventsById.has(event.id)) {
-          eventsById.set(event.id, event);
+        if (search.countryCode) {
+          params.countryCode = search.countryCode;
         }
-      });
 
-      searchResults.push({
-        ...search,
-        total: res.data?.page?.total || 0,
-        events: normalizedEvents
-      });
-    } catch (error) {
-      searchResults.push({
-        ...search,
-        total: 0,
-        error: error.response?.data || error.message,
-        events: []
-      });
-    }
-  }
+        const res = await axios.get(`${TICKETMASTER_BASE_URL}/events.json`, {
+          params,
+          timeout: TICKETMASTER_SCENE_TIMEOUT_MS
+        });
+
+        const events = res.data?._embedded?.events || [];
+        const normalizedEvents = events.map((event) =>
+          normalizeTicketmasterEvent(event, search)
+        );
+
+        return {
+          ...search,
+          total: res.data?.page?.total || 0,
+          events: normalizedEvents
+        };
+      } catch (error) {
+        return {
+          ...search,
+          total: 0,
+          error: error.response?.data || error.message,
+          events: []
+        };
+      }
+    })
+  );
+
+  searchResults.forEach((result) => {
+    result.events.forEach((event) => {
+      if (!eventsById.has(event.id)) {
+        eventsById.set(event.id, event);
+      }
+    });
+  });
 
   return {
     configured: true,
@@ -233,7 +246,7 @@ function buildTicketmasterSceneSearches(scenes) {
     const countryCodes = scene.countryCodes || [];
 
     return keywords.slice(0, 2).flatMap((keyword) =>
-      countryCodes.slice(0, 2).map((countryCode) => ({
+      [...countryCodes.slice(0, 2), null].map((countryCode) => ({
         scene: scene.scene || scene.name || "Unknown scene",
         city: scene.city || null,
         country: scene.country || null,
@@ -259,6 +272,8 @@ function normalizeTicketmasterEvent(event, search) {
     timezone: event.dates?.timezone || null,
     scene: search.scene,
     matchedKeyword: search.keyword,
+    searchCity: search.city,
+    searchCountry: search.country,
     searchCountryCode: search.countryCode,
     artists: attractions.map((attraction) => ({
       id: attraction.id,
