@@ -37,7 +37,7 @@ export default function Home() {
 
   return (
     <div className="backgroundClass">
-      <Image src="/home/background.jpg" alt="" fill priority className="z-0 object-cover object-center" sizes="100vw" />
+      <Image src="/home/rock.jpg" alt="" fill priority className="z-0 object-cover object-center" sizes="100vw" />
       <div
         className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-black/45 via-black/25 to-black/80"
         aria-hidden
