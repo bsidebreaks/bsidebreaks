@@ -170,15 +170,13 @@ export default function GeneratePage() {
     .includes('spotify session expired');
 
   return (
-    <main className="flex min-h-screen flex-col items-center px-4 py-10 sm:py-14">
-      <div className="flex w-full max-w-md flex-col items-center gap-8">
-        <header className="flex w-full items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Your trips</h1>
-            <p className="text-sm text-muted-foreground">
-              Picked from your Spotify taste
-            </p>
-          </div>
+    <main className="flex min-h-screen flex-col items-center px-4 py-4">
+      <div className="flex w-full max-w flex-col items-center gap-8">
+        <header className="w-full items-center">
+        {(status === 'loading' || loading || recommendations.length == 0) ? (
+           <p className="text-balance text-[2rem] font-semibold leading-snug tracking-tight text-white">Planning your trip..</p>
+	) : (
+           <p className="text-balance text-[2.25rem] font-bold leading-snug tracking-tight text-white">Come to {recommendations[0].country}!</p> )}
           <Button
             variant="ghost"
             size="icon"
@@ -252,13 +250,36 @@ export default function GeneratePage() {
             >
               <CarouselContent>
                 {recommendations.map((trip, index) => (
+	          <>
                   <CarouselItem key={`${trip.event_name || 'trip'}-${index}`}>
-                    <TripCard
-                      trip={trip}
-                      index={index}
-                      total={recommendations.length}
-                    />
-                  </CarouselItem>
+                    <div className="grid grid-cols-3 gap-4 w-5/6">
+            	      <SquircleCard
+            	        content={recommendations[0].city}
+            	      >
+            	      </SquircleCard>
+            	      <SquircleCard
+            	        content={"We found you " + recommendations[0].discovery_artist}
+            	      >
+            	      </SquircleCard>
+            	      <SquircleCard
+            	        content={recommendations[0].reasoning}
+            	      >
+            	      </SquircleCard>
+            	      <SquircleCard
+            	        content={recommendations[0].venue}
+            	      >
+            	      </SquircleCard>
+            	      <SquircleCard
+            	        content={"They're playing live at " + recommendations[0].venue + " on " + recommendations[0].event_date}
+            	      >
+            	      </SquircleCard>
+            	      <SquircleCard
+            	        content={recommendations[0].flightURL ?? "There are no flights available at the moment :("}
+            	      >
+            	      </SquircleCard>
+            	    </div>      		            
+		  </CarouselItem>
+		  </>
                 ))}
               </CarouselContent>
             </Carousel>
@@ -292,6 +313,22 @@ export default function GeneratePage() {
         )}
       </div>
     </main>
+  );
+}
+
+function SquircleCard({
+  content,
+}: {
+    content: string;
+}) {
+  return (
+    <>
+      <Card className="w-full">
+        <CardHeader className="space-y-3">
+          <CardTitle className="text-2xl">{content}</CardTitle>
+	</CardHeader>
+      </Card>
+    </>
   );
 }
 
