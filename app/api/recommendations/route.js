@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../../lib/auth";
 import { searchTicketmasterEventsForScenes } from "../../lib/spotify";
 import { GoogleGenAI } from "@google/genai";
+import { recordRecommendationSnapshot } from "../../../lib/analytics";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY
@@ -63,11 +64,12 @@ export async function POST(req) {
     }
 
     const availableEvents = events.filter((event) => !excludedEventIdSet.has(event.id));
+    const recommendationEvents = availableEvents.length ? availableEvents : events;
 
     const recommendations = buildMainRecommendations(
       musicalDNA,
       tasteProfile,
-      availableEvents
+      recommendationEvents
     );
 
     const response = {
@@ -84,6 +86,15 @@ export async function POST(req) {
         searchedEvents: events.length
       };
     }
+
+    recordRecommendationSnapshot({
+      session,
+      musicalDNA,
+      tasteProfile,
+      recommendations
+    }).catch((error) => {
+      console.warn("RECOMMENDATION_ANALYTICS_ERROR:", error?.message || error);
+    });
 
     return Response.json(response);
   } catch (error) {
