@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { signOut, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import {
@@ -22,6 +22,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from '@/components/ui/carousel';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -69,7 +71,36 @@ function googleMapsSearchUrl(query: string) {
 }
 
 function heroImageUrl(t: Recommendation) {
-  return (t.location_photo || t.image || "").trim() || null;
+  return (t.location_photo || t.image || '').trim() || null;
+}
+
+function readSeenEventIds() {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const value = window.sessionStorage.getItem(SEEN_EVENT_IDS_KEY);
+    const parsed = value ? JSON.parse(value) : [];
+
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberSeenEventIds(recommendations: Recommendation[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const nextIds = [
+    ...readSeenEventIds(),
+    ...recommendations.map((recommendation) => recommendation.event_id).filter((id): id is string => Boolean(id)),
+  ];
+  const uniqueIds = [...new Set(nextIds)].slice(-60);
+
+  window.sessionStorage.setItem(SEEN_EVENT_IDS_KEY, JSON.stringify(uniqueIds));
 }
 
 function readSeenEventIds() {
@@ -104,7 +135,7 @@ function rememberSeenEventIds(recommendations: Recommendation[]) {
 /** Resolves when the browser has fetched the image (avoids `background-image` painting black until decode). */
 function preloadImage(url: string) {
   return new Promise<void>((resolve) => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       resolve();
       return;
     }
@@ -113,6 +144,95 @@ function preloadImage(url: string) {
     img.onerror = () => resolve();
     img.src = url;
   });
+}
+
+const TRIP_GEN_STEP_MS = 10_000;
+const LAST_STEP_INDEX = 3;
+/** Last bar: rises slowly and never reaches 100% (asymptote below `FINAL_BAR_CAP`). */
+const FINAL_BAR_ASYMPTOTE_MS = 28_000;
+const FINAL_BAR_CAP = 97;
+
+const TRIP_GEN_STEPS = [
+  {
+    shortLabel: 'Taste Discovery',
+    caption: 'Scraping data about your listening habits and creating a taste profile.',
+  },
+  {
+    shortLabel: 'Genre Matching',
+    caption: 'Determining genres that match your taste and creating a genre profile.',
+  },
+  {
+    shortLabel: 'Finding Events',
+    caption: 'Searching for events that match your genre profile.',
+  },
+  {
+    shortLabel: 'Tailoring matches',
+    caption: 'Using Gemma to perfect the matches to your taste.',
+  },
+] as const;
+
+function TripGenerationStepBars({ startedAt }: { startedAt: number | null }) {
+  const monotonicValueRef = useRef<[number, number, number, number]>([0, 0, 0, 0]);
+
+  useEffect(() => {
+    monotonicValueRef.current = [0, 0, 0, 0];
+  }, [startedAt]);
+
+  const elapsedMs = startedAt != null ? Math.max(0, Date.now() - startedAt) : 0;
+  const stepIndex = Math.min(TRIP_GEN_STEPS.length - 1, Math.floor(elapsedMs / TRIP_GEN_STEP_MS));
+  const inStepT = (elapsedMs % TRIP_GEN_STEP_MS) / TRIP_GEN_STEP_MS;
+  const elapsedOnFinalStep = Math.max(0, elapsedMs - LAST_STEP_INDEX * TRIP_GEN_STEP_MS);
+  const step = TRIP_GEN_STEPS[stepIndex];
+  return (
+    <div className="w-full max-w-sm space-y-4">
+      <div className="space-y-1.5 text-center">
+        <p className="text-sm font-medium text-foreground">Tailoring your trips to your taste.</p>
+        <p className="text-xs text-muted-foreground transition-[opacity,transform] duration-300" key={stepIndex}>
+          <span className="text-foreground/90">
+            Step {stepIndex + 1} of 4 · {step.shortLabel}
+          </span>
+          <span> — {step.caption}</span>
+        </p>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {TRIP_GEN_STEPS.map((step, i) => {
+          let next: number;
+          if (i < stepIndex) next = 100;
+          else if (i > stepIndex) next = 0;
+          else if (i === LAST_STEP_INDEX) {
+            next = Math.round(FINAL_BAR_CAP * (1 - 1 / (1 + elapsedOnFinalStep / FINAL_BAR_ASYMPTOTE_MS)));
+          } else {
+            next = Math.min(100, Math.round(inStepT * 100));
+          }
+          const m = monotonicValueRef.current;
+          let value: number;
+          if (i > stepIndex) {
+            value = 0;
+          } else {
+            m[i] = Math.max(m[i], next);
+            value = m[i];
+          }
+          return (
+            <div key={step.shortLabel} className="flex min-w-0 flex-col items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="w-full min-w-0 touch-manipulation text-left" aria-label={step.caption}>
+                    <Progress value={value} className="h-2.5 w-full bg-muted/80" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-left max-w-[min(90vw,18rem)]">
+                  {step.caption}
+                </TooltipContent>
+              </Tooltip>
+              <span className="w-full truncate text-center text-[10px] font-medium text-muted-foreground" title={step.shortLabel}>
+                {step.shortLabel}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function GeneratePage() {
@@ -124,9 +244,21 @@ export default function GeneratePage() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [api, setApi] = useState<CarouselApi | null>(null);
   const [current, setCurrent] = useState(0);
+  const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null);
+  const [, setGenerationTick] = useState(0);
+  const generationInFlightRef = useRef(0);
+  const generationAnchorMsRef = useRef<number | null>(null);
 
   const generateTrips = useCallback(async () => {
     setLoading(true);
+    generationInFlightRef.current += 1;
+    if (generationAnchorMsRef.current == null) {
+      const t = Date.now();
+      generationAnchorMsRef.current = t;
+      setGenerationStartedAt(t);
+    } else {
+      setGenerationStartedAt(generationAnchorMsRef.current);
+    }
     setError(null);
     setRecommendations([]);
 
@@ -170,8 +302,21 @@ export default function GeneratePage() {
       setError(message);
     } finally {
       setLoading(false);
+      generationInFlightRef.current = Math.max(0, generationInFlightRef.current - 1);
+      if (generationInFlightRef.current === 0) {
+        generationAnchorMsRef.current = null;
+        setGenerationStartedAt(null);
+      }
     }
   }, []);
+
+  useEffect(() => {
+    if (!loading || generationStartedAt == null) return;
+    const id = window.setInterval(() => {
+      setGenerationTick((n) => n + 1);
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [loading, generationStartedAt]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -252,9 +397,8 @@ export default function GeneratePage() {
 
         {status === 'authenticated' && loading && (
           <Card className="w-full">
-            <CardContent className="flex flex-col items-center justify-center gap-4 py-16">
-              <Loader2 className="size-10 animate-app-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Generating your 3 trips…</p>
+            <CardContent className="flex flex-col items-center justify-center gap-5 py-12">
+              <TripGenerationStepBars startedAt={generationStartedAt} />
             </CardContent>
           </Card>
         )}
@@ -337,7 +481,7 @@ function TripCard({ trip, index, total }: { trip: Recommendation; index: number;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
-  const destination = trip.destination || [trip.city, trip.country].filter(Boolean).join(', ') || 'Unknown destination';
+  const destination = [trip.city, trip.country].filter(Boolean).join(', ') || 'Unknown destination';
   const eventName = trip.event_name || 'Live event recommendation';
   const coverUrl = heroImageUrl(trip);
 
@@ -345,13 +489,7 @@ function TripCard({ trip, index, total }: { trip: Recommendation; index: number;
     <>
       <Card className="w-full gap-0 overflow-hidden p-0">
         {coverUrl ? (
-          <img
-            src={coverUrl}
-            alt=""
-            className="aspect-[16/10] w-full shrink-0 object-cover"
-            loading="eager"
-            decoding="async"
-          />
+          <img src={coverUrl} alt="" className="aspect-[16/10] w-full shrink-0 object-cover" loading="eager" decoding="async" />
         ) : (
           <div className="aspect-[16/10] w-full shrink-0 bg-muted" aria-hidden />
         )}
