@@ -503,6 +503,7 @@ function buildMainRecommendations(dna, tasteProfile, events) {
     const country = getEventCountry(event, scene);
     const discoveryArtist = getEventDiscoveryArtist(event) || event.name;
     const destinationIata = getIataForCity(city);
+    const destinationLabel = [city, country].filter(Boolean).join(", ");
 
     return {
       category: CATEGORIES[index],
@@ -520,7 +521,7 @@ function buildMainRecommendations(dna, tasteProfile, events) {
       reasoning:
         scene?.reason ||
         `Matches your ${event.matchedKeyword || "music"} taste with a fresh live scene.`,
-      flightURL: destinationIata ? buildFlightURL("bcn", destinationIata.toLowerCase()) : null,
+      flightURL: buildFlightURL("bcn", destinationIata?.toLowerCase(), destinationLabel),
       image: event.image || null
     };
   });
@@ -763,37 +764,146 @@ function buildVibeLabel(coreGenres, adjacentGenres) {
   return genres.length ? `${genres.join(" / ")} discovery` : "Music discovery trip";
 }
 
-function buildFlightURL(originIata, destinationIata) {
-  return `https://www.skyscanner.es/transporte/vuelos/${originIata}/${destinationIata}/260425/260513/`;
+function buildFlightURL(originIata, destinationIata, destinationLabel = null) {
+  if (destinationIata) {
+    const outboundDate = formatSkyscannerDate(addDays(new Date(), 7));
+    const returnDate = formatSkyscannerDate(addDays(new Date(), 14));
+
+    return `https://www.skyscanner.es/transporte/vuelos/${originIata}/${destinationIata}/${outboundDate}/${returnDate}/`;
+  }
+
+  const query = encodeURIComponent(
+    `flights from ${originIata.toUpperCase()} to ${destinationLabel || "this event destination"}`
+  );
+
+  return `https://www.skyscanner.es/buscar?query=${query}`;
+}
+
+function addDays(date, days) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
+function formatSkyscannerDate(date) {
+  const year = String(date.getFullYear()).slice(-2);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}${month}${day}`;
 }
 
 function getIataForCity(city) {
-  const cityToIata = {
+  const normalizedCity = normalizeCityName(city);
+const cityToIata = {
+    // --- EUROPA ---
     Amsterdam: "AMS",
     Barcelona: "BCN",
     Berlin: "BER",
     Birmingham: "BHX",
-    Calgary: "YYC",
-    Chicago: "ORD",
-    Delhi: "DEL",
-    Dubai: "DXB",
-    Edmonton: "YEG",
-    LasVegas: "LAS",
-    "Las Vegas": "LAS",
+    Brussels: "BRU",
+    Budapest: "BUD",
+    Copenhagen: "CPH",
+    Dublin: "DUB",
+    Frankfurt: "FRA",
+    Geneva: "GVA",
+    Lisbon: "LIS",
     London: "LHR",
     Luton: "LTN",
+    Lyon: "LYS",
+    Madrid: "MAD",
     Manchester: "MAN",
-    Montreal: "YUL",
-    "New York": "JFK",
-    Orlando: "MCO",
+    Milan: "MXP",
+    Munich: "MUC",
+    Nice: "NCE",
+    Oslo: "OSL",
     Paris: "CDG",
-    Rosemont: "ORD",
+    Prague: "PRG",
+    Rome: "FCO",
+    Stockholm: "ARN",
+    Vienna: "VIE",
+    Warsaw: "WAW",
+    Zurich: "ZRH",
+
+    // --- NORTEAMÉRICA ---
+    Atlanta: "ATL",
+    Boston: "BOS",
+    Calgary: "YYC",
+    Chicago: "ORD",
+    Dallas: "DFW",
+    Denver: "DEN",
+    Edmonton: "YEG",
+    Houston: "IAH",
+    LasVegas: "LAS",
+    "Las Vegas": "LAS",
+    LosAngeles: "LAX",
+    "Los Angeles": "LAX",
+    Miami: "MIA",
+    Montreal: "YUL",
+    NewYork: "JFK",
+    "New York": "JFK",
+    Newark: "EWR",
+    Orlando: "MCO",
+    Philadelphia: "PHL",
+    Phoenix: "PHX",
+    Portland: "PDX",
+    SanFrancisco: "SFO",
+    "San Francisco": "SFO",
+    Seattle: "SEA",
     Toronto: "YYZ",
     Vancouver: "YVR",
-    Winnipeg: "YWG"
-  };
+    Washington: "IAD",
+    Winnipeg: "YWG",
 
-  return cityToIata[city] || null;
+    // --- ASIA & PACÍFICO ---
+    Bangkok: "BKK",
+    Beijing: "PEK",
+    Delhi: "DEL",
+    HongKong: "HKG",
+    "Hong Kong": "HKG",
+    Jakarta: "CGK",
+    KualaLumpur: "KUL",
+    Manila: "MNL",
+    Melbourne: "MEL",
+    Mumbai: "BOM",
+    Seoul: "ICN",
+    Shanghai: "PVG",
+    Singapore: "SIN",
+    Sydney: "SYD",
+    Taipei: "TPE",
+    Tokyo: "NRT",
+
+    // --- MEDIO ORIENTE & ÁFRICA ---
+    AbuDhabi: "AUH",
+    Cairo: "CAI",
+    Casablanca: "CMN",
+    Doha: "DOH",
+    Dubai: "DXB",
+    Istanbul: "IST",
+    Johannesburg: "JNB",
+    TelAviv: "TLV",
+
+    // --- LATINOAMÉRICA ---
+    Bogota: "BOG",
+    BuenosAires: "EZE",
+    "Buenos Aires": "EZE",
+    Cancun: "CUN",
+    Lima: "LIM",
+    MexicoCity: "MEX",
+    "Mexico City": "MEX",
+    PanamaCity: "PTY",
+    RioDeJaneiro: "GIG",
+    Santiago: "SCL",
+    SaoPaulo: "GRU"
+};
+
+  return cityToIata[normalizedCity] || null;
+}
+
+function normalizeCityName(city) {
+  return String(city || "")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function buildTasteProfilePrompt(dna) {
