@@ -46,7 +46,7 @@ export default function Home() {
       <div className={cn(poppins.className, 'relative z-40')}>
         <div
           className={cn(
-            'flex min-h-svh w-full max-w-6xl flex-col px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]',
+            'flex min-h-svh w-full flex-col px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]',
             'mx-auto',
             'gap-0',
           )}
